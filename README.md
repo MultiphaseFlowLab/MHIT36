@@ -68,8 +68,8 @@ Performance (NS only)
 Phase-field introduces about 20% of overhead compared to NS only
 
 Max resolution tested: 4096^3
-
 Max number of GPUs used: 512 (Leonardo) and 1024 (MN5)
+
 
 ## Validation
 
