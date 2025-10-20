@@ -66,7 +66,7 @@ end module velocity
 module phase
    double precision, allocatable :: phi(:,:,:), rhsphi(:,:,:), rhsphi_o(:,:,:), psidi(:,:,:), tanh_psi(:,:,:)
    double precision, allocatable :: normx(:,:,:), normy(:,:,:), normz(:,:,:)
-   double precision :: chempot
+   double precision :: curv
    double precision, allocatable :: fxst(:,:,:), fyst(:,:,:), fzst(:,:,:)
 end module phase
 

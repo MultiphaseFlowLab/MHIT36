@@ -12,6 +12,8 @@ use param
 use mpivar
 use cudecompvar
 
+use, intrinsic :: ieee_arithmetic
+
 implicit none
 ! timer for scaling test
 real :: t_start, t_end, elapsed
@@ -53,7 +55,7 @@ integer :: offsets(3), xoff, yoff
 integer :: np(3)
 
 ! Enable or disable phase field (acceleration eneabled by default)
-#define phiflag 0
+#define phiflag 1
 ! Enable or disable particle Lagrangian tracking (tracers)
 #define partflag 0
 
@@ -729,12 +731,12 @@ do t=tstart,tfin
                km=k-1
                if (ip .gt. nx) ip=1
                if (im .lt. 1) im=nx
-               ! chempot
-               chempot=phi(i,j,k)*(1.d0-phi(i,j,k))*(1.d0-2.d0*phi(i,j,k))*epsi-eps*(phi(ip,j,k)+phi(im,j,k)+phi(i,jp,k)+phi(i,jm,k)+phi(i,j,kp)+phi(i,j,km)- 6.d0*phi(i,j,k))*ddxi
-               ! chempot*gradphi
-               fxst(i,j,k)=6.d0*sigma*chempot*0.5d0*(phi(ip,j,k)-phi(im,j,k))*dxi
-               fyst(i,j,k)=6.d0*sigma*chempot*0.5d0*(phi(i,jp,k)-phi(i,jm,k))*dxi
-               fzst(i,j,k)=6.d0*sigma*chempot*0.5d0*(phi(i,j,kp)-phi(i,j,km))*dxi
+               ! continuum-surface force implementation
+               curv=0.5d0*(normx(ip,j,k)-normx(im,j,k))*dxi + 0.5d0*(normy(i,jp,k)-normy(i,jm,k))*dxi + 0.5d0*(normz(i,j,kp)-normz(i,j,km))*dxi
+               !compute capillary forces: sigma*curvature*gradphi
+               fxst(i,j,k)= -sigma*curv*0.5d0*(phi(ip,j,k)-phi(im,j,k))*dxi
+               fyst(i,j,k)= -sigma*curv*0.5d0*(phi(i,jp,k)-phi(i,jm,k))*dxi
+               fzst(i,j,k)= -sigma*curv*0.5d0*(phi(i,j,kp)-phi(i,j,km))*dxi
             enddo
          enddo
       enddo
@@ -998,6 +1000,10 @@ do t=tstart,tfin
    if (rank.eq.0) then
       write(*,*) "CFL (max among tasks)", cou
       if (cou .gt. 7) stop
+      if (.not. ieee_is_finite(cou)) then
+         print *, "Error: cou is infinite or NaN!"
+         stop
+      end if
    endif
 
    call cpu_time(timef)
