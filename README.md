@@ -55,7 +55,7 @@ If you use this code, please cite the following work:
   - Controlled via a conditional compilation flag.  
   - This part is supported only for the hit configurations ATM.
 - **Additional information**
-  - Additional information on the numerical implementatioon, nodes collocation and validation are available in the respective README.md file present in [/hit](hit) and [/channel] folders. 
+  - Additional information on the numerical implementatioon, nodes collocation and validation are available in the respective README.md file present in [/hit](hit) and [/channel](channel) folders. 
 
 
 ## Reference performance and scaling (hit configuration)
@@ -80,14 +80,14 @@ Performance (NS only)
 * 2048 x 768 x 576   |  16 x A100 64 GB     | 127 ms/iter
 * 3456 x 1296 x 960  |  16 x A100 64 GB     | 720 ms/iter
 
-*Phase-field introduces about 20% of overhead compared to NS only
-*Max resolution tested: 4096^3
-*Max number of GPUs used: 512 (Leonardo) and 1024 (MN5)
+* Phase-field introduces about 20% of overhead compared to NS only
+* Max resolution tested: 4096^3
+* Max number of GPUs used: 512 (Leonardo) and 1024 (MN5)
 
 
 ## Validation
 
-Benchamrk present in [VanRees2021](https://www.sciencedirect.com/science/article/abs/pii/S0021999110006467) and in [Costa2018](https://www.sciencedirect.com/science/article/pii/S089812211830405X).
+Benchamrk present in [VanRees2021](https://www.sciencedirect.com/science/article/abs/pii/S0021999110006467) and [Costa2018](https://www.sciencedirect.com/science/article/pii/S089812211830405X).
 
 Time evolution of the viscous dissipation:
 
