@@ -17,7 +17,7 @@ jobs:
         run: docker pull nvcr.io/nvidia/nvhpc:24.3-devel-cuda12.3-ubuntu22.04
 
       - name: Make build script executable
-        run: chmod +x ./multi/testpush.sh
+        run: chmod +x ./hit/testpush.sh
 
       - name: Make build script cuDecomp
         run: chmod +x ./make_lib_git.sh
