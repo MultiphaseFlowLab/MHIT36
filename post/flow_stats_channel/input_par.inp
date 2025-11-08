@@ -1,0 +1,11 @@
+512   		!nx
+256             !ny
+250             !nz
+6.28            !lx
+3.14            !ly
+2.00            !lz
+1.6             !csi, stretching factor
+800000           !start step
+1000000           !end step
+10000            !frequency
+

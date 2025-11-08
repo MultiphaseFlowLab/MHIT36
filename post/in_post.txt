@@ -1,5 +1,0 @@
-512             ! Line 1: nx
-0               ! Line 2: Begin (first saving to be processed)
-140000             ! Line 3: End (last saving to be processed)
-2000               ! Line 4: Step (step for processing: 1= every saving, 2=every other saving, ...)
-"/leonardo_work/IscrB_SONORA/RUN1/multi/output/"              !Line 4 : rootpath for results

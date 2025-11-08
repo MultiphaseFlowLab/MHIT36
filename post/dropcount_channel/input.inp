@@ -1,0 +1,6 @@
+1280   ! nx
+640    ! ny
+384    ! nz
+150000 ! start step
+800000 ! end step
+5000   ! dstep
