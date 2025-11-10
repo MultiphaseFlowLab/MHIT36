@@ -8,7 +8,7 @@ character(len=8) :: numfile
 integer :: i,j,k,m
 
 
-namedir='../../multi/output/'
+namedir='../../channel/output/'
 write(numfile,'(i8.8)') nstep
 
 

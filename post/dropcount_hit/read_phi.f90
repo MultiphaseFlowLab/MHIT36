@@ -11,7 +11,7 @@ subroutine read_phi(nstep)
  namefile = trim(rootpath)//trim(namefile)
 
 
- ! namedir='../multi/output/'
+ ! namedir='../hit/output/'
  ! write(numfile,'(i8.8)') nstep
   
  ! !namefile=trim(namedir)//'phi_'//numfile//'.dat'

@@ -10,7 +10,7 @@ logical :: check
 
 
 
-namedir='../../multi/output/'
+namedir='../../hit/output/'
 write(numfile,'(i8.8)') nstep
 
 
@@ -21,26 +21,35 @@ allocate(phi(nx,ny,nz))
 
 
 write(*,*) 'Reading step ',nstep,' out of ',nend,' , flow'
-  !reading u
-  !namefile=trim(namedir)//'u_'//numfile//'.dat'
-  !open(666,file=trim(namefile),form='unformatted',access='stream',status='old',convert='little_endian')
-  !read(666) u
-  !close(666,status='keep')
-  !reading v
-  !namefile=trim(namedir)//'v_'//numfile//'.dat'
-  !open(667,file=trim(namefile),form='unformatted',access='stream',status='old',convert='little_endian')
-  !read(667) v
-  !close(667,status='keep')
-  !reading w
-  !namefile=trim(namedir)//'w_'//numfile//'.dat'
-  !open(668,file=trim(namefile),form='unformatted',access='stream',status='old',convert='little_endian')
-  !read(668) w
-  !close(668,status='keep')
-  !reading phi
-namefile=trim(namedir)//'phi_'//numfile//'.dat'
-open(668,file=trim(namefile),form='unformatted',access='stream',status='old',convert='little_endian')
-read(668) phi
-close(668,status='keep')
+ !reading u
+ if (uflag .eq. 1) then
+    namefile=trim(namedir)//'u_'//numfile//'.dat'
+    open(666,file=trim(namefile),form='unformatted',access='stream',status='old',convert='little_endian')
+    read(666) u
+    close(666,status='keep')
+ endif
+ !reading v
+ if (vflag .eq.	1) then
+   namefile=trim(namedir)//'v_'//numfile//'.dat'
+   open(667,file=trim(namefile),form='unformatted',access='stream',status='old',convert='little_endian')
+   read(667) v
+   close(667,status='keep')
+endif
+!reading w
+   if (wflag .eq.	1) then
+   namefile=trim(namedir)//'w_'//numfile//'.dat'
+   open(668,file=trim(namefile),form='unformatted',access='stream',status='old',convert='little_endian')
+   read(668) w
+   close(668,status='keep')
+endif
+!reading phi
+   if (phiflag .eq.	1) then
+   namefile=trim(namedir)//'phi_'//numfile//'.dat'
+   open(668,file=trim(namefile),form='unformatted',access='stream',status='old',convert='little_endian')
+   read(668) phi
+   close(668,status='keep')
+endif
+
 ! generate paraview output file
 call generate_output(nstep)
 

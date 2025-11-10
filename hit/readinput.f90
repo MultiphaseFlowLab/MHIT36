@@ -57,6 +57,7 @@ if (rank .eq. 0) then
     write(*,*) "██  ██  ██ ██   ██ ██    ██         ██ ██    ██" 
     write(*,*) "██      ██ ██   ██ ██    ██    ██████   ██████"         
     write(*,*) "----------------------------------------------"
+    write(*,*) "----Homogeneous isotropic turbulence setup----"
     write(*,*) 'Grid:', nx, 'x', nx, 'x', nx
     write(*,*) "Restart ", restart
     write(*,*) "Tstart  ", tstart

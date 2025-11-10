@@ -9,7 +9,7 @@ integer :: i,j,k,m
 double precision :: tw
 
 
-namedir='../../multi/output/'
+namedir='../../channel/output/'
 write(numfile,'(i8.8)') nstep
 
 

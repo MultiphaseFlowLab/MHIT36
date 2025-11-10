@@ -103,12 +103,12 @@ program union_find_gpu
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
  do it = first_step, last_step, step
-   write(phi_file, '("../multi/output/phi_", I8.8,".dat")') it
-   write(u_file, '("../multi/output/u_", I8.8,".dat")') it
-   write(v_file, '("../multi/output/v_", I8.8,".dat")') it
-   write(w_file, '("../multi/output/w_", I8.8,".dat")') it
+   write(phi_file, '("../hit/output/phi_", I8.8,".dat")') it
+   write(u_file, '("../hit/output/u_", I8.8,".dat")') it
+   write(v_file, '("../hit/output/v_", I8.8,".dat")') it
+   write(w_file, '("../hit/output/w_", I8.8,".dat")') it
    if (readf) then
-!      open(55, file='../../multi/output/phi_00000000.dat', form='unformatted', access='stream', status='old')
+!      open(55, file='../../hit/output/phi_00000000.dat', form='unformatted', access='stream', status='old')
       open(55, file=phi_file, form='unformatted', access='stream', status='old')
       read(55) phi
       close(55)

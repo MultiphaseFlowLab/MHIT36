@@ -21,7 +21,7 @@ For time integration, a fully explicit scheme is used: Euler explicit for ACDI +
 ## Homogeneous isotropic turbulence box 
 - HIT at Re_lambda=200, Grid: 512 x 512 x 512
 
-![Test](../val/hit.png)
+![Test](../val/hit2.png)
 
 ## Nodes numbering and staggered grid
 

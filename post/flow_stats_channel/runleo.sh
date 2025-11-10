@@ -1,6 +1,6 @@
-make clean
+module load gcc
 rm -r *.mod
-make &> /dev/null
+make clean
 rm -r output
 mkdir output
 make

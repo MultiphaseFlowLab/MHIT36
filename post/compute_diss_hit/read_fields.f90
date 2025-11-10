@@ -8,7 +8,7 @@ character(len=40) :: namedir,namefile
 character(len=8) :: numfile
 
 
-namedir='../multi/output/'
+namedir='../../hit/output/'
 write(numfile,'(i8.8)') nstep
 
 namefile=trim(namedir)//'u_'//numfile//'.dat'

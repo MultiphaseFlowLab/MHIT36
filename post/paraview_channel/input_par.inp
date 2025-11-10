@@ -12,4 +12,5 @@
 0               !out v
 0               !out w
 1               !out phi
+0               !out theta
 
