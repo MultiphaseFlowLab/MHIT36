@@ -14,7 +14,7 @@ EXTRA_DIR = /leonardo/prod/opt/compilers/cuda/12.3/none/compat
 export $(CUDECOMP_DIR)/lib
 
 # Compiler and Linker Flags
-FFLAGS = -fast -acc -gpu=mem:managed -Minfo=accel -Mfree -Mpreprocess -cpp -cuda  -I$(CUDECOMP_DIR)/include/
+FFLAGS = -fast -acc -gpu=mem:managed -Mfree -Mpreprocess -cpp -cuda  -I$(CUDECOMP_DIR)/include/
 LIBS = -L$(CUDECOMP_DIR)/lib/ -L$(CUDA_DIR)/lib64/ -lcudecomp_fort -lcudecomp -cudalib=cufft  -lnvToolsExt
 
 # Source and Object Files

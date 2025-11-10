@@ -5,7 +5,7 @@ Solution of Navier-Stokes equations + phase-field method (ACDI) + energy equatio
 For time integration, a fully explicit scheme is used: Euler explicit for ACDI + RK3 for Navier-Stokes and temperature
 
 ## Check list of features implemented
-- Boundary condition for no-slip at the two walls ✅
+- No-slip boundary conditions at the two walls ✅
 - Laminar solution (uniform and non-uniform grids) ✅
 - TDMA validation ✅ 
 - Turbulent channel flow ✅ 
@@ -21,7 +21,7 @@ For time integration, a fully explicit scheme is used: Euler explicit for ACDI +
 - Passive scaler: Can be enabled or disabled. Default is single-phase.  
 
 ## Turbulent channel flow 
-- TCF at Rey_tau=590, Grid: 1536 x 768 x 576
+- TCF at Re_&tau=590, Grid: 1536 x 768 x 576
 
 ![Test](../val/tcf2.png)
 
@@ -30,7 +30,7 @@ For time integration, a fully explicit scheme is used: Euler explicit for ACDI +
 
 X-pencil configuration:
 
-![Test](../val/grid5.png)
+![Test](../val/grid_channel.png)
 
 ## Contributing
 

@@ -73,16 +73,16 @@ Performance (NS only)
 
 ## Reference performance and scaling (channel configuration)
 Performance (NS only)
-* 256 x 128 x 200    |   2 x RTX5000 16GB   |  31 ms/iter 
-* 512 x 256 x 384    |   4 x A100 64 GB     |  15 ms/iter
-* 1536 x 768 x 576   |   4 x A100 64 GB.    | 220 ms/iter
-* 2048 x 768 x 576   |   4 x A100 64 GB     | 323 ms/iter
-* 2048 x 768 x 576   |  16 x A100 64 GB     | 127 ms/iter
-* 3456 x 1296 x 960  |  16 x A100 64 GB     | 720 ms/iter
+* 256 x 128 x 200    |   2 x RTX5000 16GB   |  31 ms/timestep 
+* 512 x 256 x 384    |   4 x A100 64 GB     |  15 ms/timestep
+* 1536 x 768 x 576   |   4 x A100 64 GB.    | 220 ms/timestep
+* 2048 x 768 x 576   |   4 x A100 64 GB     | 323 ms/timestep
+* 2048 x 768 x 576   |  16 x A100 64 GB     | 127 ms/timestep
+* 3456 x 1296 x 960  |  16 x A100 64 GB     | 720 ms/timestep
 
-* Phase-field introduces about 20% of overhead compared to NS only
-* Max resolution tested: 4096^3
-* Max number of GPUs used: 512 (Leonardo) and 1024 (MN5)
+- Phase-field introduces about 20% of overhead compared to NS only
+- Max resolution tested: 4096^3
+- Max number of GPUs used: 512 (Leonardo) and 1024 (MN5)
 
 
 ## Validation

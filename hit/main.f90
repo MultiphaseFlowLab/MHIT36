@@ -55,7 +55,7 @@ integer :: offsets(3), xoff, yoff
 integer :: np(3)
 
 ! Enable or disable phase field (acceleration eneabled by default)
-#define phiflag 1
+#define phiflag 0
 ! Enable or disable particle Lagrangian tracking (tracers)
 #define partflag 0
 
