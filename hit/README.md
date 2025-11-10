@@ -27,9 +27,5 @@ For time integration, a fully explicit scheme is used: Euler explicit for ACDI +
 
 X-pencil configuration:
 
-![Test](../val/grid5.png)
+![Test](../val/grid_hit.png)
 
-## Contributing
-
-We welcome all contributions that can enhance TCF36, including bug fixes, performance improvements, and new features. 
-If you would like to contribute, please contact me or open an Issue in the repository.
