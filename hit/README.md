@@ -7,7 +7,7 @@ For time integration, a fully explicit scheme is used: Euler explicit for ACDI +
 ## Check list of features implemented
 - Uniform grid along all three directions 
 - Poisson solver based on full 3D FFT 
-- Domain size: 2*pi along all three directions
+- Domain size: $2\pi$ along all three directions
 
 **Autotuning of decomposition**  
 - Default: `pr=0` and `pc=0` → enables **automatic process decomposition**.  

@@ -5,9 +5,9 @@ Solution of Navier-Stokes equations + phase-field method (ACDI) + energy equatio
 For time integration, a fully explicit scheme is used: Euler explicit for ACDI + RK3 for Navier-Stokes and temperature
 
 ## Main features at a glance:
-- No-slip boundary conditions at the two walls (z=+/-h)
-- Poisson solver based on FFT2 along x and y + TDMA along z.
-- Non-uniform grid along z, any stretching function can be used (defined in read_input.f90)
+- No-slip boundary conditions at the two walls ($z=\pm h$)
+- Poisson solver based on FFT2 along $x$ and $y$ + TDMA along $z$.
+- Non-uniform grid along $z$, any stretching function can be used (defined in read_input.f90)
 - Domain of arbitary dimensions along all three directions
 
 **Autotuning of decomposition**  
@@ -20,7 +20,7 @@ For time integration, a fully explicit scheme is used: Euler explicit for ACDI +
 - Passive scaler: Can be enabled or disabled. Default is single-phase.  
 
 ## Turbulent channel flow 
-- Turbulent channel flow at Re_τ=590, Grid: 1536 x 768 x 576
+- Turbulent channel flow at $Re_\tau=590$, Grid: $1536 \times 768 \times 576$
 
 ![Test](../val/tcf2.png)
 
