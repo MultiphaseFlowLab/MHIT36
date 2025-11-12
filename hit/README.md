@@ -19,7 +19,7 @@ For time integration, a fully explicit scheme is used: Euler explicit for ACDI +
 - Particles (tracers): Can be enabled or disabled. Default is single-phase.  
  
 ## Homogeneous isotropic turbulence box 
-- HIT at Re_lambda=200, Grid: 512 x 512 x 512
+- HIT at $Re_\lambda=200$, Grid: $512 \times 512 \times 512$
 
 ![Test](../val/hit2.png)
 
