@@ -15,7 +15,7 @@ The code parallerelization relies on the cuDecomp library.
 ~~~
 
 
-If you use this code, please cite the following work: 
+If you use this code, please cite the following works: 
 ```bibtex
   @article{roccon2025,
   title   = {MHIT36: A Phase-Field Code for Gpu Simulations of Multiphase Homogeneous Isotropic Turbulence},
@@ -25,6 +25,18 @@ If you use this code, please cite the following work:
   volume  = {314},
   issue   = {109804},
   doi     = {https://doi.org/10.1016/j.cpc.2025.109804}
+}
+```
+
+```bibtex
+  @article{roccon2025,
+  title   = {MHIT36: Extension to wall-bounded turbulence and scalar transport equation},
+  author  = {Roccon, A.},
+  journal = {Computer Physics Communications},
+  year    = {2026},
+  volume  = {---},
+  issue   = {---},
+  doi     = {---}
 }
 ```
 
