@@ -29,7 +29,7 @@ If you use this code, please cite the following works:
 ```
 
 ```bibtex
-  @article{roccon2025,
+  @article{roccon2026,
   title   = {MHIT36: Extension to wall-bounded turbulence and scalar transport equation},
   author  = {Roccon, A.},
   journal = {Computer Physics Communications},
