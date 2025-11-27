@@ -35,8 +35,8 @@ If you use this code, please cite the following works:
   journal = {Computer Physics Communications},
   year    = {2026},
   volume  = {---},
-  issue   = {---},
-  doi     = {---}
+  issue   = {109956},
+  doi     = {https://doi.org/10.1016/j.cpc.2025.109956}
 }
 ```
 
