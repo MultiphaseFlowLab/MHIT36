@@ -1,0 +1,28 @@
+# Compiler
+FC = mpif90
+LD	= $(FC)
+RM	= /bin/rm -f
+
+# Paths (Modify if necessary)
+CUDECOMP_DIR = /home/milton/MHIT36/cuDecomp/build/
+
+# Compiler and Linker Flags
+FFLAGS = -fast -acc -gpu=mem:managed -Minfo=accel -Mfree -Mpreprocess -cpp -Minfo=accel -cuda  -I$(CUDECOMP_DIR)/include
+LIBS = -L$(CUDECOMP_DIR)/lib -L/usr/local/cuda/lib64 -lcudecomp_fort -lcudecomp -cudalib=cufft -lcuda -lnvToolsExt
+
+# Source and Object Files
+OBJS = module.f90 particles.f90 main.f90 readinput.f90 readwrite.f90
+EXEC = mhit36
+
+$(EXEC):	$(OBJS)
+	$(LD) $(FFLAGS) $(OBJS) $(LIBS) -o $@
+
+clean:
+	$(RM) $(EXEC)
+
+.SUFFIXES: .o
+
+.f90.o:
+	$(FC)  -c $(FFLAGS) $<
+
+
