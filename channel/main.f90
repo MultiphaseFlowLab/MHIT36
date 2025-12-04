@@ -820,8 +820,8 @@ do t=tstart,tfin
          ! 0 and ny+1 are the ghost nodes
          do k = 1, nz
             a(k) =  1.0d0*(dzi(k)**2*dzi(k+1))/(dzi(k)+dzi(k+1))
-            b(k) = -a(k) - c(k) - (2.d0*(cos(kx_d(ig)*dx)-1.d0)*dxi*dxi + 2.d0*(cos(kx_d(jg)*dy)-1.d0)*dyi*dyi;)
             c(k) =  1.0d0*(dzi(k)*dzi(k+1)**2)/(dzi(k)+dzi(k+1))
+            b(k) = -a(k) - c(k) - (2.d0*(cos(kx_d(ig)*dx)-1.d0)*dxi*dxi + 2.d0*(cos(ky_d(jg)*dy)-1.d0)*dyi*dyi)
             d(k) =  psi3d(k,il,jl)
          enddo
          ! Neumann BC at bottom
