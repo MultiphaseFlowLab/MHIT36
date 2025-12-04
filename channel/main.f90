@@ -819,19 +819,19 @@ do t=tstart,tfin
          ! Fill diagonals and rhs for each
          ! 0 and ny+1 are the ghost nodes
          do k = 1, nz
-            a(k) =  2.0d0*(dzi(k)**2*dzi(k+1))/(dzi(k)+dzi(k+1))
-            c(k) =  2.0d0*(dzi(k)*dzi(k+1)**2)/(dzi(k)+dzi(k+1))
-            b(k) = -a(k) - c(k) - (kx_d(ig)**2 + ky_d(jg)**2)
+            a(k) =  1.0d0*(dzi(k)**2*dzi(k+1))/(dzi(k)+dzi(k+1))
+            b(k) = -a(k) - c(k) - (2.d0*(cos(kx_d(ig)*dx)-1.d0)*dxi*dxi + 2.d0*(cos(kx_d(jg)*dy)-1.d0)*dyi*dyi;)
+            c(k) =  1.0d0*(dzi(k)*dzi(k+1)**2)/(dzi(k)+dzi(k+1))
             d(k) =  psi3d(k,il,jl)
          enddo
          ! Neumann BC at bottom
          a(0) =  0.0d0
-         b(0) = -1.d0*dzi(1)*dzi(1) - kx_d(ig)*kx_d(ig) - ky_d(jg)*ky_d(jg)
+         b(0) = -1.d0*dzi(1)*dzi(1)! - kx_d(ig)*kx_d(ig) - ky_d(jg)*ky_d(jg)
          c(0) =  1.d0*dzi(1)*dzi(1)
          d(0) =  0.0d0
          ! Neumann BC at top
          a(nz+1) =  1.0d0*dzi(nz+1)*dzi(nz+1)
-         b(nz+1) = -1.0d0*dzi(nz+1)*dzi(nz+1) - kx_d(ig)*kx_d(ig) - ky_d(jg)*ky_d(jg)
+         b(nz+1) = -1.0d0*dzi(nz+1)*dzi(nz+1) !- kx_d(ig)*kx_d(ig) - ky_d(jg)*ky_d(jg)
          c(nz+1) =  0.0d0
          d(nz+1) =  0.0d0
          ! Enforce pressure at one point? one interior point, avodig messing up with BC
