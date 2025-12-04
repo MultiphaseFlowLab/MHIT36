@@ -1309,7 +1309,7 @@ do t=tstart,tfin
          do k = 1, nz
             !k2 = kx_d(ig)**2 + kx_d(jg)**2 + kx_d(k)**2    
             k2 = (2.d0*(cos(kx_d(ig)*dx)-1.d0) + 2.d0*(cos(kx_d(jg)*dx)-1.d0) + 2.d0*(cos(kx_d(k)*dx)-1.d0))*dxi*dxi
-            phi3d(k,il,jl) = -phi3d(k,il,jl)/k2/(int(nx,8)*int(ny,8)*int(nz,8))
+            phi3d(k,il,jl) = phi3d(k,il,jl)/k2/(int(nx,8)*int(ny,8)*int(nz,8))
          enddo
       enddo
    enddo
