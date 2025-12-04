@@ -1,7 +1,7 @@
 module param
     integer, parameter :: nx=200
-    integer, parameter :: ny=200
-    integer, parameter :: nz=100
+    integer, parameter :: ny=100
+    integer, parameter :: nz=200
     double precision :: pi, rhoi, twopi
     double precision :: lx, dx, dxi, ddxi 
     double precision :: ly, dy, dyi, ddyi
