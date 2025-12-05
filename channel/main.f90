@@ -42,7 +42,7 @@ character(len=4) :: itcount
 ! Code variables
 double precision ::err, maxErr, meanp, gmeanp
 double complex, device, pointer :: psi3d(:,:,:)
-double precision :: k2
+double precision :: k2,maxdiv
 !integer :: il, jl, ig, jg
 integer :: offsets(3), xoff, yoff
 integer :: np(3)
@@ -56,7 +56,7 @@ double precision, parameter :: beta(3)  = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12
 ! Enable or disable phase field 
 #define phiflag 0
 ! Enable or disable temperature field
-#define thetaflag 1
+#define thetaflag 0
 
 !########################################################################################################################################
 ! 1. INITIALIZATION OF MPI AND cuDECOMP AUTOTUNING : START
@@ -178,10 +178,9 @@ allocate(p(piX%shape(1), piX%shape(2), piX%shape(3)))
 allocate(psi_d(max(nElemX_d2z, nElemY_d2z, nElemZ_d2z))) 
 !NS variables
 allocate(u(piX%shape(1),piX%shape(2),piX%shape(3)),v(piX%shape(1),piX%shape(2),piX%shape(3)),w(piX%shape(1),piX%shape(2),piX%shape(3))) !velocity vector
-! allocate(ustar(piX%shape(1),piX%shape(2),piX%shape(3)),vstar(piX%shape(1),piX%shape(2),piX%shape(3)),wstar(piX%shape(1),piX%shape(2),piX%shape(3))) ! provisional velocity field
 allocate(rhsu(piX%shape(1),piX%shape(2),piX%shape(3)),rhsv(piX%shape(1),piX%shape(2),piX%shape(3)),rhsw(piX%shape(1),piX%shape(2),piX%shape(3))) ! right hand side u,v,w
 allocate(rhsu_o(piX%shape(1),piX%shape(2),piX%shape(3)),rhsv_o(piX%shape(1),piX%shape(2),piX%shape(3)),rhsw_o(piX%shape(1),piX%shape(2),piX%shape(3))) ! right hand side u,v,w
-!allocate(div(piX%shape(1),piX%shape(2),piX%shape(3))) (debug only)
+allocate(div(piX%shape(1),piX%shape(2),piX%shape(3))) 
 !TDMA solver
 allocate(a(0:nz+1),b(0:nz+1),c(0:nz+1),d(0:nz+1),sol(0:nz+1))
 !PFM variables
@@ -241,14 +240,14 @@ if (rank.eq.0) write(*,*) "Initialize velocity field (fresh start)"
             jg = piX%lo(2) + j - 1 - halo_ext
             do i = 1, piX%shape(1)
                amp=3.d0
-               mx=3.03d0
+               mx=2.001d0
                my=2.02d0
                mz=4.d0
                !3D divergence free flow with fluctuations that satisfies the boundary conditions
-               u(i,j,k) =  1.d0*(1.d0 - ((2*z(kg) - lz)/lz)**2) !
+               u(i,j,k) =  20.d0*(1.d0 - ((2*z(kg) - lz)/lz)**2) !
                u(i,j,k) =  u(i,j,k) - amp*cos(twopi*mx*x(i)/lx)*sin(twopi*my*y(jg)/ly)*2.d0*twopi/lz*sin(twopi*z(kg)/lz)*cos(twopi*z(kg)/lz)
                u(i,j,k) =  u(i,j,k) + amp*sin(twopi*mx*x(i)/lx)*(-twopi*my/ly)*sin(2.d0*twopi*my*y(jg)/ly)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
-               v(i,j,k) = -amp*cos(twopi*my*y(jg)/ly)*(twopi*mx/lx)*cos(twopi*mx*x(i)/lx)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
+               v(i,j,k) = -amp*cos(twopi*my*y(jg)/ly)!*(twopi*mx/lx)*cos(twopi*mx*x(i)/lx)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
                w(i,j,k) =  amp*cos(twopi*mx*x(i)/lx)*(twopi*mx/lx)*sin(twopi*my*y(jg)/ly)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
             enddo
          enddo
@@ -837,10 +836,10 @@ do t=tstart,tfin
          ! Enforce pressure at one point? one interior point, avodig messing up with BC
          ! need brackets?
          if (ig == 1 .and. jg == 1) then
-            a(1) = 0.d0
-            b(1) = 1.d0
-            c(1) = 0.d0
-            d(1) = 0.d0
+            a(nz) = 0.d0
+            b(nz) = 1.d0
+            c(nz) = 0.d0
+            d(nz) = 0.d0
          end if
          ! Forward elimination (Thomas)
          !$acc loop seq
@@ -944,17 +943,36 @@ do t=tstart,tfin
             ! bottom wall 
             if (kg .eq. 1)    u(i,j,k-1) =  -u(i,j,k)  !  mean value between kg and kg-1 (wall) equal to zero  
             if (kg .eq. 1)    v(i,j,k-1) =  -v(i,j,k)  !  mean value between kg and kg-1 (wall) equal to zero  
-            if (kg .eq. 1)    w(i,j,k)    =   0.d0       !  w point is at the wall
+            if (kg .eq. 1)    w(i,j,k)   =   0.d0       !  w point is at the wall
             ! top wall
-            if (kg .eq. nz)   u(i,j,k+1)=  -u(i,j,k)  !  mean value between kg and kg+1 (wall) equal to zero 
-            if (kg .eq. nz)   v(i,j,k+1)=  -v(i,j,k)  !  mean value between kg and kg+1 (wall) equal to zero 
-            if (kg .eq. nz+1) w(i,j,k)=0.d0             !  w point (nz+1) is at the wall
+            if (kg .eq. nz)   u(i,j,k+1) =  -u(i,j,k)  !  mean value between kg and kg+1 (wall) equal to zero 
+            if (kg .eq. nz)   v(i,j,k+1) =  -v(i,j,k)  !  mean value between kg and kg+1 (wall) equal to zero 
+            if (kg .eq. nz+1) w(i,j,k)   = 0.d0             !  w point (nz+1) is at the wall
             umax=max(umax,u(i,j,k))
             vmax=max(vmax,v(i,j,k))
             wmax=max(wmax,w(i,j,k))
          enddo
       enddo
    enddo
+
+
+   maxdiv=0.0d0
+   !$acc parallel loop collapse(3) reduction(max:maxdiv)
+   do k=1+halo_ext, piX%shape(3)-halo_ext
+      do j=1+halo_ext, piX%shape(2)-halo_ext
+         do i = 1, piX%shape(1) ! equal to nx (no halo on x)
+              ip=i+1
+              jp=j+1
+              kp=k+1
+              kg=piX%lo(3)  + k - 1 - halo_ext
+              if (ip > nx) ip=1
+              div(i,j,k)=dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))
+              maxdiv=max(maxdiv,abs(div(i,j,k)))
+          enddo
+      enddo
+   enddo
+   write(*,*) "Max divergence after correction ", maxdiv
+
 
    call MPI_Allreduce(umax,gumax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
    call MPI_Allreduce(vmax,gvmax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
