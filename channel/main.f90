@@ -239,15 +239,14 @@ if (rank.eq.0) write(*,*) "Initialize velocity field (fresh start)"
          do j = 1+halo_ext, piX%shape(2)-halo_ext
             jg = piX%lo(2) + j - 1 - halo_ext
             do i = 1, piX%shape(1)
-               amp=3.d0
-               mx=2.001d0
-               my=2.02d0
+               amp=1.d0
+               mx=2.d0
+               my=2.d0
                mz=4.d0
                !3D divergence free flow with fluctuations that satisfies the boundary conditions
-               u(i,j,k) =  20.d0*(1.d0 - ((2*z(kg) - lz)/lz)**2) !
+               u(i,j,k) =  20.d0*(1.d0 - ((2*z(kg) - lz)/lz)**2) 
                u(i,j,k) =  u(i,j,k) - amp*cos(twopi*mx*x(i)/lx)*sin(twopi*my*y(jg)/ly)*2.d0*twopi/lz*sin(twopi*z(kg)/lz)*cos(twopi*z(kg)/lz)
-               u(i,j,k) =  u(i,j,k) + amp*sin(twopi*mx*x(i)/lx)*(-twopi*my/ly)*sin(2.d0*twopi*my*y(jg)/ly)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
-               v(i,j,k) = -amp*cos(twopi*my*y(jg)/ly)!*(twopi*mx/lx)*cos(twopi*mx*x(i)/lx)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
+               v(i,j,k) = -amp*cos(twopi*my*y(jg)/ly)*(twopi*mx/lx)*cos(twopi*mx*x(i)/lx)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
                w(i,j,k) =  amp*cos(twopi*mx*x(i)/lx)*(twopi*mx/lx)*sin(twopi*my*y(jg)/ly)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
             enddo
          enddo
