@@ -285,13 +285,13 @@ allocate(rhsu_o(piX%shape(1),piX%shape(2),piX%shape(3)),rhsv_o(piX%shape(1),piX%
 allocate(div(piX%shape(1),piX%shape(2),piX%shape(3)))
 !PFM variables
 #if phiflag == 1
-   allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphi(piX%shape(1),piX%shape(2),piX%shape(3)))
-   allocate(psidi(piX%shape(1),piX%shape(2),piX%shape(3)))
-   allocate(tanh_psi(piX%shape(1),piX%shape(2),piX%shape(3)))
-   allocate(normx(piX%shape(1),piX%shape(2),piX%shape(3)),normy(piX%shape(1),piX%shape(2),piX%shape(3)),normz(piX%shape(1),piX%shape(2),piX%shape(3)))
-   allocate(normx_f(piX%shape(1),piX%shape(2),piX%shape(3)),normy_f(piX%shape(1),piX%shape(2),piX%shape(3)),normz_f(piX%shape(1),piX%shape(2),piX%shape(3)))
-   allocate(fxst(piX%shape(1),piX%shape(2),piX%shape(3)),fyst(piX%shape(1),piX%shape(2),piX%shape(3)),fzst(piX%shape(1),piX%shape(2),piX%shape(3))) ! surface tension forces
-   allocate(phi_tmp(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik2(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik3(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik4(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphi(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(psidi(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(tanh_psi(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(normx(piX%shape(1),piX%shape(2),piX%shape(3)),normy(piX%shape(1),piX%shape(2),piX%shape(3)),normz(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(normx_f(piX%shape(1),piX%shape(2),piX%shape(3)),normy_f(piX%shape(1),piX%shape(2),piX%shape(3)),normz_f(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(fxst(piX%shape(1),piX%shape(2),piX%shape(3)),fyst(piX%shape(1),piX%shape(2),piX%shape(3)),fzst(piX%shape(1),piX%shape(2),piX%shape(3))) ! surface tension forces
+allocate(phi_tmp(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik2(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik3(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik4(piX%shape(1),piX%shape(2),piX%shape(3)))
 #endif
 
 ! allocate arrays for transpositions and halo exchanges 
@@ -573,15 +573,11 @@ do t=tstart,tfin
       enddo
 
       ! Update normx,normy and normz halos, required to then compute normal derivative
-      !$acc host_data use_device(normx)
+      !$acc host_data use_device(normx,normy,normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data
-      !$acc host_data use_device(normy)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data
@@ -632,21 +628,18 @@ do t=tstart,tfin
                normz_zm = 0.5d0*(normz(i,j,km)+normz(i,j,k))
                normz_zp = 0.5d0*(normz(i,j,kp)+normz(i,j,k))
                ! sharpening term
-               !
                rn_01 = normx_xm/(sqrt(normx_xm**2.0d0+normy_xm**2.0d0+normz_xm**2.0d0)+enum)
                rn_11 = normx_xp/(sqrt(normx_xp**2.0d0+normy_xp**2.0d0+normz_xp**2.0d0)+enum)
                rn_02 = normy_ym/(sqrt(normx_ym**2.0d0+normy_ym**2.0d0+normz_ym**2.0d0)+enum)
                rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.0d0+normz_yp**2.0d0)+enum)
                rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.0d0+normz_zm**2.0d0)+enum)
                rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.0d0+normz_zp**2.0d0)+enum)
-               !
                sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
                sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
                sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               !
                rhsphi(i,j,k)=rhsphi(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
             enddo
          enddo
@@ -717,15 +710,11 @@ do t=tstart,tfin
       enddo
 
       ! Update normx,normy and normz halos, required to then compute normal derivative
-      !$acc host_data use_device(normx)
+      !$acc host_data use_device(normx,normy,normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(normy)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data 
@@ -768,14 +757,12 @@ do t=tstart,tfin
                rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.0d0+normz_yp**2.0d0)+enum)
                rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.0d0+normz_zm**2.0d0)+enum)
                rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.0d0+normz_zp**2.0d0)+enum)
-               !
                sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
                sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
                sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               !
                rhsphik2(i,j,k)=rhsphik2(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
             enddo
          enddo
@@ -845,15 +832,11 @@ do t=tstart,tfin
       enddo
 
       ! Update normx,normy and normz halos, required to then compute normal derivative
-      !$acc host_data use_device(normx)
+      !$acc host_data use_device(normx,normy,normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(normy)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data
@@ -896,14 +879,12 @@ do t=tstart,tfin
                rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.0d0+normz_yp**2.0d0)+enum)
                rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.0d0+normz_zm**2.0d0)+enum)
                rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.0d0+normz_zp**2.0d0)+enum)
-               !
                sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
                sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
                sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               !
                rhsphik3(i,j,k)=rhsphik3(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
             enddo
          enddo
@@ -974,15 +955,11 @@ do t=tstart,tfin
       enddo
 
       ! Update normx,normy and normz halos, required to then compute normal derivative
-      !$acc host_data use_device(normx)
+      !$acc host_data use_device(normx,normy,normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(normy)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data 
@@ -1025,14 +1002,12 @@ do t=tstart,tfin
                rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.d0+normz_yp**2.0d0)+enum)
                rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.d0+normz_zm**2.0d0)+enum)
                rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.d0+normz_zp**2.0d0)+enum)
-               !
                sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
                sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
                sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               !
                rhsphik4(i,j,k)=rhsphik4(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
             enddo
          enddo
@@ -1057,13 +1032,14 @@ do t=tstart,tfin
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data 
    #endif
-
    ! (uncomment for profiling)
    ! call nvtxEndRange
-
    !########################################################################################################################################
    ! END STEP 5: PHASE-FIELD SOLVER 
    !########################################################################################################################################
+
+
+
 
 
    !########################################################################################################################################
@@ -1165,15 +1141,11 @@ do t=tstart,tfin
       !$acc end kernels
 
       ! Update halo of fxst, fyst and fzst (required then to interpolate at velocity points)
-      !$acc host_data use_device(fxst)
+      !$acc host_data use_device(fxst,fyst,fzst)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, fxst, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, fxst, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(fyst)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, fyst, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, fyst, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      !$acc host_data use_device(fzst)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, fzst, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, fzst, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data 
@@ -1224,19 +1196,14 @@ do t=tstart,tfin
    beta= 0.5d0
 
    ! 5.3 update halos (y and z directions), required to then compute the RHS of Poisson equation because of staggered grid
-   !$acc host_data use_device(u)
+   !$acc host_data use_device(u,v,w)
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   !$acc end host_data 
-   !$acc host_data use_device(v)
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, v, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, v, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   !$acc end host_data 
-   !$acc host_data use_device(w)
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
    !$acc end host_data 
-   ! (uncomment for profiling)
    ! call nvtxEndRange
    !########################################################################################################################################
    ! END STEP 6: USTAR COMPUTATION 
@@ -1247,9 +1214,7 @@ do t=tstart,tfin
    !########################################################################################################################################
    ! START STEP 7: POISSON SOLVER FOR PRESSURE
    !########################################################################################################################################
-   ! initialize rhs and analytical solution
    ! 7.1 Compute rhs of Poisson equation div*ustar: divergence at the cell center 
-   ! (uncomment for profiling)
    ! call nvtxStartRange("Poisson")
    ! call nvtxStartRange("compute RHS")
    !$acc kernels
@@ -1308,7 +1273,7 @@ do t=tstart,tfin
          ig = xoff + il
          do k = 1, nz
             !k2 = kx_d(ig)**2 + kx_d(jg)**2 + kx_d(k)**2    
-            k2 = (2.d0*(cos(kx_d(ig)*dx)-1.d0) + 2.d0*(cos(kx_d(jg)*dx)-1.d0) + 2.d0*(cos(kx_d(k)*dx)-1.d0))*dxi*dxi
+            k2 = (2.d0*(cos(kx_d(ig)*dx)-1.d0) + 2.d0*(cos(kx_d(jg)*dx)-1.d0) + 2.d0*(cos(kx_d(k)*dx)-1.d0))*dxi*dxi !opt: precompute cosines?
             phi3d(k,il,jl) = phi3d(k,il,jl)/k2/(int(nx,8)*int(ny,8)*int(nz,8))
          enddo
       enddo
@@ -1400,15 +1365,11 @@ do t=tstart,tfin
    !$acc end kernels 
 
    ! 8.3 update halos (y and z directions), required to then compute the RHS of Poisson equation because of staggered grid
-   !$acc host_data use_device(u)
+   !$acc host_data use_device(u,v,w)
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   !$acc end host_data 
-   !$acc host_data use_device(v)
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, v, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, v, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   !$acc end host_data 
-   !$acc host_data use_device(w)
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
    !$acc end host_data 
