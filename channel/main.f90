@@ -823,22 +823,21 @@ do t=tstart,tfin
             d(k) =  psi3d(k,il,jl)
          enddo
          ! Neumann BC at bottom
-         a(0) =  0.0d0
-         b(0) = -1.d0*dzi(1)*dzi(1)! - kx_d(ig)*kx_d(ig) - ky_d(jg)*ky_d(jg)
-         c(0) =  1.d0*dzi(1)*dzi(1)
-         d(0) =  0.0d0
+         a(0) =  0.d0
+         b(0) = -1.d0!*dzi(1)*dzi(1)
+         c(0) =  1.d0!*dzi(1)*dzi(1)
+         d(0) =  0.d0
          ! Neumann BC at top
-         a(nz+1) =  1.0d0*dzi(nz+1)*dzi(nz+1)
-         b(nz+1) = -1.0d0*dzi(nz+1)*dzi(nz+1) !- kx_d(ig)*kx_d(ig) - ky_d(jg)*ky_d(jg)
-         c(nz+1) =  0.0d0
-         d(nz+1) =  0.0d0
+         a(nz+1) =  1.d0!*dzi(nz+1)*dzi(nz+1)
+         b(nz+1) = -1.d0!*dzi(nz+1)*dzi(nz+1) 
+         c(nz+1) =  0.d0
+         d(nz+1) =  0.d0
          ! Enforce pressure at one point? one interior point, avodig messing up with BC
          ! need brackets?
          if (ig == 1 .and. jg == 1) then
-            a(nz) = 0.d0
-            b(nz) = 1.d0
-            c(nz) = 0.d0
-            d(nz) = 0.d0
+            a(nz+1) = 0.d0
+            b(nz+1) = 1.d0
+            c(nz+1) = 0.d0
          end if
          ! Forward elimination (Thomas)
          !$acc loop seq
@@ -876,7 +875,7 @@ do t=tstart,tfin
    do k=1+halo_ext, piX%shape(3)-halo_ext
       do j=1+halo_ext, piX%shape(2)-halo_ext
          do i=1,nx
-            p(i,j,k) = p(i,j,k)/nx/ny
+            p(i,j,k) = p(i,j,k)/dble(nx*ny)
          end do
       end do
    end do
