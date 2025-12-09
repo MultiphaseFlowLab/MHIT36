@@ -74,8 +74,8 @@ ierr = cudaSetDevice(localRank) !assign GPU to MPI rank
 call readinput
 
 ! domain decomposition (pencils in y and z) 
-pr = 1
-pc = 2
+pr = 0
+pc = 0
 halo_ext=1
 
 ! CuDECOMP initialization and settings 

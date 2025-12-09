@@ -2,15 +2,15 @@
 0           ! iteration to start from (fresh start 0 otherwise different)
 200000        ! Final time step
 1000         ! Saving frequency
-4.0         ! Streamwise domain lenght Lx
-2.0         ! Spanwise domain width Ly
+6.28         ! Streamwise domain lenght Lx
+3.14         ! Spanwise domain width Ly
 2.0         ! Wall-normal domain height Lz=2h
-0.0001         ! Stretching factor quasi~0=uniform 1.5 mid-stretching and 3.0 extreme (do not use zero)
+1.6         ! Stretching factor quasi~0=uniform 1.5 mid-stretching and 3.0 extreme (do not use zero)
 1           ! inflow condition (0=zero, 1=perturbed 3D field, 2=read from fields)
 0           ! phase-field initial condition (0=circular drop, 1=read from fields)
 0           ! theta initial condition (0=uniform, 1=read from fields)
 0.0001      ! dt for the simulation
-0.0066666   ! mu (viscosity)
+0.00169   ! mu (viscosity)
 1.000       ! density
 -1.0        ! Pressure gradient along x (negative if flow along x) 
 0.0         ! Pressure gradient along y (negative if flow along y) 
