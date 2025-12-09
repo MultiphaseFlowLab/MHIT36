@@ -26,7 +26,7 @@ integer :: planXf, planXb, planY
 integer :: batchsize
 integer :: status
 integer :: i,j,k,il,jl,kl,ig,jg,kg,t,stage
-integer :: im,ip,jm,jp,km,kp,last,idx
+integer :: im,ip,jm,jp,km,kp,last,idx,kgm
 ! TDMA variables
 double precision, allocatable :: a(:), b(:), c(:)
 double complex, allocatable :: d(:), sol(:)
@@ -74,8 +74,8 @@ ierr = cudaSetDevice(localRank) !assign GPU to MPI rank
 call readinput
 
 ! domain decomposition (pencils in y and z) 
-pr = 0
-pc = 0
+pr = 1
+pc = 2
 halo_ext=1
 
 ! CuDECOMP initialization and settings 
@@ -146,6 +146,7 @@ nElemZ_d2z = piZ_d2z%size
 CHECK_CUDECOMP_EXIT(cudecompGetTransposeWorkspaceSize(handle, grid_descD2Z, nElemWork_d2z))
 CHECK_CUDECOMP_EXIT(cudecompGetHaloWorkspaceSize(handle, grid_descD2Z, 1, halo, nElemWork_halo_d2z))
 ! End cuDecomp initialization
+
 
 
 ! CUFFT initialization -- Create Plans (along x anf y only, z not required)
@@ -239,13 +240,14 @@ if (rank.eq.0) write(*,*) "Initialize velocity field (fresh start)"
          do j = 1+halo_ext, piX%shape(2)-halo_ext
             jg = piX%lo(2) + j - 1 - halo_ext
             do i = 1, piX%shape(1)
-               amp=1.d0
-               mx=2.d0
-               my=2.d0
-               mz=4.d0
+               amp=3.d0
+               mx= 3.03d0
+               my= 2.02d0
+               mz= 4.00d0
                !3D divergence free flow with fluctuations that satisfies the boundary conditions
-               u(i,j,k) =  20.d0*(1.d0 - ((2*z(kg) - lz)/lz)**2) 
+               u(i,j,k) =  20.d0*(1.d0 - ((2*z(kg) - lz)/lz)**2) !
                u(i,j,k) =  u(i,j,k) - amp*cos(twopi*mx*x(i)/lx)*sin(twopi*my*y(jg)/ly)*2.d0*twopi/lz*sin(twopi*z(kg)/lz)*cos(twopi*z(kg)/lz)
+               u(i,j,k) =  u(i,j,k) + amp*sin(twopi*mx*x(i)/lx)*(-twopi*my/ly)*sin(2.d0*twopi*my*y(jg)/ly)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
                v(i,j,k) = -amp*cos(twopi*my*y(jg)/ly)*(twopi*mx/lx)*cos(twopi*mx*x(i)/lx)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
                w(i,j,k) =  amp*cos(twopi*mx*x(i)/lx)*(twopi*mx/lx)*sin(twopi*my*y(jg)/ly)*sin(twopi*z(kg)/lz)*sin(twopi*z(kg)/lz)
             enddo
@@ -719,7 +721,7 @@ do t=tstart,tfin
       enddo
       #endif
 
-      ! 5.3 update halos (y and z directions), required to then compute the RHS of Poisson equation because of staggered grid
+      ! 8.3 update halos (y direction), required to then compute the RHS of Poisson equation because of staggered grid
       !$acc host_data use_device(u,v,w)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
@@ -730,24 +732,27 @@ do t=tstart,tfin
       !$acc end host_data 
 
       ! impose velocity boundary conditions, w is at the wall, u and v interpolate so that the mean value is zero, no-slip assumted, i.e. u=0, can be extented to any value
-      ! even when stretched the spacing cell face is centered
-      !$acc parallel loop collapse(3)
+      !$acc parallel loop collapse(3) 
       do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
+         do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
-               kg = piX%lo(3) + k - 1 -halo_ext            
+               kg = piX%lo(3) + k - 1 -halo_ext 
                ! bottom wall 
-               if (kg .eq. 1)    u(i,j,k-1)=  -u(i,j,k)  !  mean value between kg and kg-1 (wall) equal to zero  
-               if (kg .eq. 1)    v(i,j,k-1)=  -v(i,j,k)  !  mean value between kg and kg-1 (wall) equal to zero  
-               if (kg .eq. 1)    w(i,j,k)=0.d0           ! w point is at the wall
+               if (kg .eq. 0)     u(i,j,k)=  -u(i,j,k+1)  !  mean value between kg and kg-1 (wall) equal to zero  
+               if (kg .eq. 0)     v(i,j,k)=  -v(i,j,k+1)  !  mean value between kg and kg-1 (wall) equal to zero  
+               if (kg .eq. 1)     w(i,j,k)=   0.d0           ! w point is at the wall
                ! top wall
-               if (kg .eq. nz)   u(i,j,k+1)=  -u(i,j,k)  !  mean value between kg and kg+1 (wall) equal to zero 
-               if (kg .eq. nz)   v(i,j,k+1)=  -v(i,j,k)  !  mean value between kg and kg+1 (wall) equal to zero 
-               if (kg .eq. nz+1) w(i,j,k)=0.d0           ! w point (nz+1) is at the wall
+               if (kg .eq. nz+1)   u(i,j,k)=  -u(i,j,k-1)  !  mean value between kg and kg+1 (wall) equal to zero 
+               if (kg .eq. nz+1)   v(i,j,k)=  -v(i,j,k-1)  !  mean value between kg and kg+1 (wall) equal to zero 
+               if (kg .eq. nz+1)   w(i,j,k)=   0.d0           ! w point (nz+1) is at the wall   
             enddo
          enddo
       enddo  
+
    enddo
+   call nvtxEndRange
+
+
    !########################################################################################################################################
    ! END STEP 6: USTAR COMPUTATION 
    !########################################################################################################################################
@@ -780,6 +785,7 @@ do t=tstart,tfin
    !$acc end kernels
    call nvtxEndRange
 
+
    call nvtxStartRange("FFT forward w/ transpositions")
    !$acc host_data use_device(rhsp)
    status = cufftExecD2Z(planXf, rhsp, psi_d)
@@ -810,30 +816,29 @@ do t=tstart,tfin
    !$acc parallel loop collapse(2) gang private(a,b,c,d,factor) 
    do jl = 1, npy
       do il = 1, npx
-         ! compute index global wavenumber ig and jg
+         ! compute global index ig and jg
          jg = yoff + jl
          ig = xoff + il
          ! Set up tridiagonal system for each i and j
          ! Fill diagonals and rhs for each
-         ! 0 and ny+1 are the ghost nodes
+         ! 0 and nz+1 are the ghost nodes
          do k = 1, nz
-            a(k) =  2.0d0*(dzi(k)**2*dzi(k+1))/(dzi(k)+dzi(k+1))
-            c(k) =  2.0d0*(dzi(k)*dzi(k+1)**2)/(dzi(k)+dzi(k+1))
-            b(k) = -a(k) - c(k) + (2.d0*(cos(kx_d(ig)*dx)-1.d0)*dxi*dxi + 2.d0*(cos(ky_d(jg)*dy)-1.d0)*dyi*dyi)
+            a(k) =  2.0d0*(dzi(k)**2.d0*dzi(k+1))/(dzi(k)+dzi(k+1))
+            c(k) =  2.0d0*(dzi(k)*dzi(k+1)**2.d0)/(dzi(k)+dzi(k+1))
+            b(k) =  -a(k) - c(k) + 2.d0*(cos(kx_d(ig)*dx)-1.d0)*dxi*dxi + 2.d0*(cos(ky_d(jg)*dy)-1.d0)*dyi*dyi !opt: precompute cosines? 
             d(k) =  psi3d(k,il,jl)
          enddo
          ! Neumann BC at bottom
          a(0) =  0.d0
-         b(0) = -1.d0!*dzi(1)*dzi(1)
-         c(0) =  1.d0!*dzi(1)*dzi(1)
+         b(0) = -1.d0
+         c(0) =  1.d0  
          d(0) =  0.d0
          ! Neumann BC at top
-         a(nz+1) =  1.d0!*dzi(nz+1)*dzi(nz+1)
-         b(nz+1) = -1.d0!*dzi(nz+1)*dzi(nz+1) 
+         a(nz+1) =  1.d0
+         b(nz+1) = -1.d0
          c(nz+1) =  0.d0
          d(nz+1) =  0.d0
          ! Enforce pressure at one point? one interior point, avodig messing up with BC
-         ! need brackets?
          if (ig == 1 .and. jg == 1) then
             a(nz+1) = 0.d0
             b(nz+1) = 1.d0
@@ -847,10 +852,9 @@ do t=tstart,tfin
             d(k) = d(k) - factor*d(k-1)
          end do
          ! Back substitution
-         psi3d(nz+1,il,jl) = d(nz+1)/b(nz+1)
-         ! check on pivot like flutas?
+         psi3d(nz,il,jl) = (d(nz) - c(nz)*d(nz+1)/b(nz+1))/b(nz)
          !$acc loop seq
-         do k = nz, 1, -1
+         do k = nz-1, 1, -1
             psi3d(k,il,jl) = (d(k) - c(k)*psi3d(k+1,il,jl))/b(k)
          end do
       end do
@@ -879,10 +883,7 @@ do t=tstart,tfin
          end do
       end do
    end do
-
-   call nvtxEndRange
    ! update halo nodes with pressure 
-   ! Update X-pencil halos 
    !$acc host_data use_device(p)
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, p, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, p, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
@@ -890,7 +891,6 @@ do t=tstart,tfin
    !########################################################################################################################################
    ! END STEP 7: POISSON SOLVER FOR PRESSURE
    !########################################################################################################################################
-   call nvtxEndRange
 
 
    call nvtxStartRange("Correction")
@@ -900,7 +900,10 @@ do t=tstart,tfin
    ! 8.1 Correct velocity 
    ! 8.2 Call halo update
    ! Correct velocity, pressure has also the halo
-   !$acc kernels 
+   umax=0.d0
+   vmax=0.d0
+   wmax=0.d0
+   !$acc parallel loop collapse(3) reduction(max:umax,vmax,wmax)
    do k=1+halo_ext, piX%shape(3)-halo_ext
       do j=1+halo_ext, piX%shape(2)-halo_ext
          do i = 1, piX%shape(1) ! equal to nx (no halo on x)
@@ -909,13 +912,20 @@ do t=tstart,tfin
               km=k-1
               kg=piX%lo(3)  + k - 1 - halo_ext
               if (im < 1) im=nx
+              if (kg .eq. 1) then
+              u(i,j,k)=u(i,j,k) - dt/rho*(p(i,j,k)-p(im,j,k))*dxi
+              v(i,j,k)=v(i,j,k) - dt/rho*(p(i,j,k)-p(i,jm,k))*dyi
+              else
               u(i,j,k)=u(i,j,k) - dt/rho*(p(i,j,k)-p(im,j,k))*dxi
               v(i,j,k)=v(i,j,k) - dt/rho*(p(i,j,k)-p(i,jm,k))*dyi
               w(i,j,k)=w(i,j,k) - dt/rho*(p(i,j,k)-p(i,j,km))*dzi(kg)
+              endif
+              !umax=max(umax,u(i,j,k))
+              !vmax=max(vmax,v(i,j,k))
+              !wmax=max(wmax,w(i,j,k))
           enddo
       enddo
    enddo
-   !$acc end kernels 
 
    ! 8.3 update halos (y direction), required to then compute the RHS of Poisson equation because of staggered grid
    !$acc host_data use_device(u,v,w)
@@ -927,34 +937,7 @@ do t=tstart,tfin
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
    !$acc end host_data 
 
-   ! impose velocity boundary conditions, can be optimized, no real gain
-   ! w is at the wall, u and v interpolate so that the mean value is zero
-   ! no-slip assumted, i.e. u=0, can be extented to any value
-   umax=0.d0
-   vmax=0.d0
-   wmax=0.d0
-   !$acc parallel loop collapse(3) reduction(max:umax,vmax,wmax)
-   do k=1, piX%shape(3)
-      do j=1, piX%shape(2)
-         do i=1,nx
-            kg = piX%lo(3) + k - 1 - halo_ext                   
-            ! bottom wall 
-            if (kg .eq. 1)    u(i,j,k-1) =  -u(i,j,k)  !  mean value between kg and kg-1 (wall) equal to zero  
-            if (kg .eq. 1)    v(i,j,k-1) =  -v(i,j,k)  !  mean value between kg and kg-1 (wall) equal to zero  
-            if (kg .eq. 1)    w(i,j,k)   =   0.d0       !  w point is at the wall
-            ! top wall
-            if (kg .eq. nz)   u(i,j,k+1) =  -u(i,j,k)  !  mean value between kg and kg+1 (wall) equal to zero 
-            if (kg .eq. nz)   v(i,j,k+1) =  -v(i,j,k)  !  mean value between kg and kg+1 (wall) equal to zero 
-            if (kg .eq. nz+1) w(i,j,k)   = 0.d0             !  w point (nz+1) is at the wall
-            umax=max(umax,u(i,j,k))
-            vmax=max(vmax,v(i,j,k))
-            wmax=max(wmax,w(i,j,k))
-         enddo
-      enddo
-   enddo
-
-
-   maxdiv=0.0d0
+   maxdiv=0.d0
    !$acc parallel loop collapse(3) reduction(max:maxdiv)
    do k=1+halo_ext, piX%shape(3)-halo_ext
       do j=1+halo_ext, piX%shape(2)-halo_ext
@@ -970,7 +953,6 @@ do t=tstart,tfin
       enddo
    enddo
    write(*,*) "Max divergence after correction ", maxdiv
-
 
    call MPI_Allreduce(umax,gumax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
    call MPI_Allreduce(vmax,gvmax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
