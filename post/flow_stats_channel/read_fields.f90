@@ -130,7 +130,7 @@ do k=1,nz
   write(66,'(f12.5,2x,12(es12.5,2x))') z(k),mean(k,1),mean(k,2),mean(k,3),rms(k,1),rms(k,2),rms(k,3), &
                                             skw(k,1),skw(k,2),skw(k,3),   flt(k,1),flt(k,2),flt(k,3)
 end do
-
+close(66)
 
 deallocate(u,v,w,phi)
 deallocate(mean,rms,skw,flt)

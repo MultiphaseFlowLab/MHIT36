@@ -67,6 +67,7 @@ deallocate(u)
 deallocate(v)
 deallocate(w)
 deallocate(phi)
+deallocate(theta)
 
 return
 end

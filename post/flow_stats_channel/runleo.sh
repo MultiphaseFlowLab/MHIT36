@@ -4,4 +4,4 @@ make clean
 rm -r output
 mkdir output
 make
-./read_paraview
+./stats
