@@ -9,7 +9,7 @@ module param
     double precision, allocatable :: x(:), y(:), z(:), dzi(:), dzci(:), kx(:), ky(:)
     double precision, device, allocatable :: kx_d(:), ky_d(:)
     integer :: restart,tstart,tfin,dump
-    double precision :: gamma, normod, factor, csi
+    double precision :: gamma, normod, factor, csi, normal
     double precision :: dt,mu,rho !flow parameters
     integer :: inflow, inphi, intheta
     double precision :: radius, sigma, epsr, eps, pos, val, epsi, enum ! phase-field parameters

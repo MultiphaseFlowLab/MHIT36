@@ -539,6 +539,17 @@ do t=tstart,tfin
          enddo
       enddo
       !$acc end parallel loop
+      ! apply BC on phi_tmp (no-flux)
+      !$acc parallel loop collapse(3)
+      do k=1, piX%shape(3)
+         do j=1, piX%shape(2)
+            do i=1,nx
+               kg = piX%lo(3) + k - 1 - halo_ext                   
+               if (kg .eq. 1)    phi_tmp(i,j,k-1) =  phi_tmp(i,j,k)     
+               if (kg .eq. nz)   phi_tmp(i,j,k+1) =  phi_tmp(i,j,k)     
+            enddo
+         enddo
+      enddo
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
@@ -657,16 +668,28 @@ do t=tstart,tfin
       do k=1, piX%shape(3)
          do j=1, piX%shape(2)
             do i=1,nx
-               phi_tmp(i,j,k) = phi(i,j,k) + 0.5d0 * dt * rhsphik2(i,j,k)
+               phi_tmp(i,j,k) = phi(i,j,k) + 0.5d0*dt*rhsphik2(i,j,k)
             enddo
          enddo
       enddo
       !$acc end parallel loop
+      ! apply BC on phi_tmp (no-flux)
+      !$acc parallel loop collapse(3)
+      do k=1, piX%shape(3)
+         do j=1, piX%shape(2)
+            do i=1,nx
+               kg = piX%lo(3) + k - 1 - halo_ext                   
+               if (kg .eq. 1)    phi_tmp(i,j,k-1) =  phi_tmp(i,j,k)     
+               if (kg .eq. nz)   phi_tmp(i,j,k+1) =  phi_tmp(i,j,k)     
+            enddo
+         enddo
+      enddo
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data 
+      
       !$acc kernels
       do k=1, piX%shape(3)
          do j=1, piX%shape(2)
@@ -784,6 +807,17 @@ do t=tstart,tfin
          enddo
       enddo
       !$acc end parallel loop
+      ! apply BC on phi_tmp (no-flux)
+      !$acc parallel loop collapse(3)
+      do k=1, piX%shape(3)
+         do j=1, piX%shape(2)
+            do i=1,nx
+               kg = piX%lo(3) + k - 1 - halo_ext                   
+               if (kg .eq. 1)    phi_tmp(i,j,k-1) =  phi_tmp(i,j,k)     
+               if (kg .eq. nz)   phi_tmp(i,j,k+1) =  phi_tmp(i,j,k)     
+            enddo
+         enddo
+      enddo
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
@@ -910,7 +944,17 @@ do t=tstart,tfin
          enddo
       enddo
       !$acc end kernels
-
+      ! apply BC on phi_tmp (no-flux)
+      !$acc parallel loop collapse(3)
+      do k=1, piX%shape(3)
+         do j=1, piX%shape(2)
+            do i=1,nx
+               kg = piX%lo(3) + k - 1 - halo_ext                   
+               if (kg .eq. 1)    phi(i,j,k-1) =  phi(i,j,k)     
+               if (kg .eq. nz)   phi(i,j,k+1) =  phi(i,j,k)     
+            enddo
+         enddo
+      enddo
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
