@@ -854,12 +854,12 @@ do t=tstart,tfin
                      - (max(u(ip,j,k),0.0d0)*phi_tmp(i,j,k) + min(u(ip,j,k),0.0d0)*phi_tmp(ip,j,k) - &
                         min(u(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(u(i,j,k),0.0d0)*phi_tmp(im,j,k))*dxi  &
                      - (max(v(i,jp,k),0.0d0)*phi_tmp(i,j,k) + min(v(i,jp,k),0.0d0)*phi_tmp(i,jp,k) - &
-                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dxi  &
+                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dyi  &
                      - (max(w(i,j,kp),0.0d0)*phi_tmp(i,j,k) + min(w(i,j,kp),0.0d0)*phi_tmp(i,j,kp) - &
-                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))*dxi  &
+                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))/dz  &
                            + gamma*(eps*(phi_tmp(ip,j,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(im,j,k))*ddxi + &
-                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddxi + &
-                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddxi)
+                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddyi + &
+                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddzi)
                ! 4.1.3. Compute normals for sharpening term (gradient)
                normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
                normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
