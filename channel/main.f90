@@ -438,16 +438,16 @@ do t=tstart,tfin
                      - (max(u(ip,j,k),0.0d0)*phi(i,j,k) + min(u(ip,j,k),0.0d0)*phi(ip,j,k) - &
                         min(u(i,j,k),0.0d0)*phi(i,j,k) - max(u(i,j,k),0.0d0)*phi(im,j,k))*dxi  &
                      - (max(v(i,jp,k),0.0d0)*phi(i,j,k) + min(v(i,jp,k),0.0d0)*phi(i,jp,k) - &
-                        min(v(i,j,k),0.0d0)*phi(i,j,k) - max(v(i,j,k),0.0d0)*phi(i,jm,k))*dxi  &
+                        min(v(i,j,k),0.0d0)*phi(i,j,k) - max(v(i,j,k),0.0d0)*phi(i,jm,k))*dyi  &
                      - (max(w(i,j,kp),0.0d0)*phi(i,j,k) + min(w(i,j,kp),0.0d0)*phi(i,j,kp) - &
-                        min(w(i,j,k),0.0d0)*phi(i,j,k) - max(w(i,j,k),0.0d0)*phi(i,j,km))*dxi  &
+                        min(w(i,j,k),0.0d0)*phi(i,j,k) - max(w(i,j,k),0.0d0)*phi(i,j,km))/dz  &
                            + gamma*(eps*(phi(ip,j,k)-2.d0*phi(i,j,k)+phi(im,j,k))*ddxi + &
-                                    eps*(phi(i,jp,k)-2.d0*phi(i,j,k)+phi(i,jm,k))*ddxi + &
-                                    eps*(phi(i,j,kp)-2.d0*phi(i,j,k)+phi(i,j,km))*ddxi)
+                                    eps*(phi(i,jp,k)-2.d0*phi(i,j,k)+phi(i,jm,k))*ddyi + &
+                                    eps*(phi(i,j,kp)-2.d0*phi(i,j,k)+phi(i,j,km))*ddzi)
                ! 4.1.3. Compute normals for sharpening term (gradient)
-               normx(i,j,k) = (psidi(ip,j,k) - psidi(im,j,k))
-               normy(i,j,k) = (psidi(i,jp,k) - psidi(i,jm,k))
-               normz(i,j,k) = (psidi(i,j,kp) - psidi(i,j,km))
+               normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
+               normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
+               normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))/dz
             enddo
          enddo
       enddo
@@ -508,21 +508,18 @@ do t=tstart,tfin
                normz_zm = 0.5d0*(normz(i,j,km)+normz(i,j,k))
                normz_zp = 0.5d0*(normz(i,j,kp)+normz(i,j,k))
                ! sharpening term
-               !
                rn_01 = normx_xm/(sqrt(normx_xm**2.0d0+normy_xm**2.0d0+normz_xm**2.0d0)+enum)
                rn_11 = normx_xp/(sqrt(normx_xp**2.0d0+normy_xp**2.0d0+normz_xp**2.0d0)+enum)
                rn_02 = normy_ym/(sqrt(normx_ym**2.0d0+normy_ym**2.0d0+normz_ym**2.0d0)+enum)
                rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.0d0+normz_yp**2.0d0)+enum)
                rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.0d0+normz_zm**2.0d0)+enum)
                rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.0d0+normz_zp**2.0d0)+enum)
-               !
                sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
                sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
                sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               !
                rhsphi(i,j,k)=rhsphi(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
             enddo
          enddo
@@ -589,16 +586,16 @@ do t=tstart,tfin
                      - (max(u(ip,j,k),0.0d0)*phi_tmp(i,j,k) + min(u(ip,j,k),0.0d0)*phi_tmp(ip,j,k) - &
                         min(u(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(u(i,j,k),0.0d0)*phi_tmp(im,j,k))*dxi  &
                      - (max(v(i,jp,k),0.0d0)*phi_tmp(i,j,k) + min(v(i,jp,k),0.0d0)*phi_tmp(i,jp,k) - &
-                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dxi  &
+                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dyi  &
                      - (max(w(i,j,kp),0.0d0)*phi_tmp(i,j,k) + min(w(i,j,kp),0.0d0)*phi_tmp(i,j,kp) - &
-                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))*dxi  &
+                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))/dz  &
                            + gamma*(eps*(phi_tmp(ip,j,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(im,j,k))*ddxi + &
-                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddxi + &
-                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddxi)
+                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddyi + &
+                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddzi)
                ! 4.1.3. Compute normals for sharpening term (gradient)
-               normx(i,j,k) = (psidi(ip,j,k) - psidi(im,j,k))
-               normy(i,j,k) = (psidi(i,jp,k) - psidi(i,jm,k))
-               normz(i,j,k) = (psidi(i,j,kp) - psidi(i,j,km))
+               normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
+               normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
+               normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))/dz
             enddo
          enddo
       enddo
@@ -723,16 +720,16 @@ do t=tstart,tfin
                      - (max(u(ip,j,k),0.0d0)*phi_tmp(i,j,k) + min(u(ip,j,k),0.0d0)*phi_tmp(ip,j,k) - &
                         min(u(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(u(i,j,k),0.0d0)*phi_tmp(im,j,k))*dxi  &
                      - (max(v(i,jp,k),0.0d0)*phi_tmp(i,j,k) + min(v(i,jp,k),0.0d0)*phi_tmp(i,jp,k) - &
-                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dxi  &
+                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dyi  &
                      - (max(w(i,j,kp),0.0d0)*phi_tmp(i,j,k) + min(w(i,j,kp),0.0d0)*phi_tmp(i,j,kp) - &
-                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))*dxi  &
+                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))/dz  &
                            + gamma*(eps*(phi_tmp(ip,j,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(im,j,k))*ddxi + &
-                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddxi + &
-                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddxi)
+                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddyi + &
+                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddzi)
                ! 4.1.3. Compute normals for sharpening term (gradient)
-               normx(i,j,k) = (psidi(ip,j,k) - psidi(im,j,k))
-               normy(i,j,k) = (psidi(i,jp,k) - psidi(i,jm,k))
-               normz(i,j,k) = (psidi(i,j,kp) - psidi(i,j,km))
+               normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
+               normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
+               normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))/dz
             enddo
          enddo
       enddo
@@ -779,18 +776,18 @@ do t=tstart,tfin
                normz_zm = 0.5d0*(normz(i,j,km)+normz(i,j,k))
                normz_zp = 0.5d0*(normz(i,j,kp)+normz(i,j,k))
                ! sharpening term
-               rn_01 = normx_xm/(sqrt(normx_xm**2.0d0+normy_xm**2.0d0+normz_xm**2.0d0)+enum)
-               rn_11 = normx_xp/(sqrt(normx_xp**2.0d0+normy_xp**2.0d0+normz_xp**2.0d0)+enum)
-               rn_02 = normy_ym/(sqrt(normx_ym**2.0d0+normy_ym**2.0d0+normz_ym**2.0d0)+enum)
-               rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.0d0+normz_yp**2.0d0)+enum)
-               rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.0d0+normz_zm**2.0d0)+enum)
-               rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.0d0+normz_zp**2.0d0)+enum)
-               sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
-               sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
-               sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
-               sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
-               sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
-               sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
+               rn_01 = normx_xm/(sqrt(normx_xm**2.d0+normy_xm**2.d0+normz_xm**2.d0)+enum)
+               rn_11 = normx_xp/(sqrt(normx_xp**2.d0+normy_xp**2.d0+normz_xp**2.d0)+enum)
+               rn_02 = normy_ym/(sqrt(normx_ym**2.d0+normy_ym**2.d0+normz_ym**2.d0)+enum)
+               rn_12 = normy_yp/(sqrt(normx_yp**2.d0+normy_yp**2.d0+normz_yp**2.d0)+enum)
+               rn_03 = normz_zm/(sqrt(normx_zm**2.d0+normy_zm**2.d0+normz_zm**2.d0)+enum)
+               rn_13 = normz_zp/(sqrt(normx_zp**2.d0+normy_zp**2.d0+normz_zp**2.d0)+enum)
+               sharpxm = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.d0)*rn_01)
+               sharpxp = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.d0)*rn_11)
+               sharpym = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.d0)*rn_02)
+               sharpyp = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.d0)*rn_12)
+               sharpzm = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.d0)*rn_03)
+               sharpzp = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.d0)*rn_13)
                rhsphik3(i,j,k)=rhsphik3(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
             enddo
          enddo
@@ -864,9 +861,9 @@ do t=tstart,tfin
                                     eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddxi + &
                                     eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddxi)
                ! 4.1.3. Compute normals for sharpening term (gradient)
-               normx(i,j,k) = (psidi(ip,j,k) - psidi(im,j,k))
-               normy(i,j,k) = (psidi(i,jp,k) - psidi(i,jm,k))
-               normz(i,j,k) = (psidi(i,j,kp) - psidi(i,j,km))
+               normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
+               normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
+               normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))/dz
             enddo
          enddo
       enddo
@@ -919,14 +916,12 @@ do t=tstart,tfin
                rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.d0+normz_yp**2.0d0)+enum)
                rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.d0+normz_zm**2.0d0)+enum)
                rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.d0+normz_zp**2.0d0)+enum)
-               !
                sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
                sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
                sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               !
                rhsphik4(i,j,k)=rhsphik4(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
             enddo
          enddo

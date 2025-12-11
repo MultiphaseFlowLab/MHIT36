@@ -5,7 +5,7 @@ module param
     double precision :: pi, rhoi, twopi
     double precision :: lx, dx, dxi, ddxi 
     double precision :: ly, dy, dyi, ddyi
-    double precision :: lz
+    double precision :: lz, dz, dzi, ddzi
     double precision, allocatable :: x(:), y(:), z(:), dzi(:), dzci(:), kx(:), ky(:)
     double precision, device, allocatable :: kx_d(:), ky_d(:)
     integer :: restart,tstart,tfin,dump
