@@ -54,7 +54,7 @@ double precision, parameter :: beta(3)  = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12
 !real(kind=8), parameter :: beta(3)   = (/ 0.0d0, -0.122243120495896d0, -0.377756879504104d0 /)
 
 ! Enable or disable phase field 
-#define phiflag 0
+#define phiflag 1
 ! Enable or disable temperature field
 #define thetaflag 0
 
@@ -410,8 +410,6 @@ do t=tstart,tfin
                ! compute distance function psi (used to compute normals)
                val = min(phi(i,j,k),1.0d0) ! avoid machine precision overshoots in phi that leads to problem with log
                psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
-               ! compute here the tanh of distance function psi (used in the sharpening term) to avoid multiple computations of tanh
-               tanh_psi(i,j,k) = tanh(0.5d0*psidi(i,j,k)*epsi)
             enddo
          enddo
       enddo
@@ -463,19 +461,6 @@ do t=tstart,tfin
       !$acc end host_data
 
       ! Substep 2: Compute normals (1.e-16 is a numerical tollerance to avoid 0/0) for surface tension force computation later
-      !$acc kernels
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
-            do i=1,nx
-               normag = 1.d0/(sqrt(normx(i,j,k)*normx(i,j,k) + normy(i,j,k)*normy(i,j,k) + normz(i,j,k)*normz(i,j,k)) + enum)
-               normx_f(i,j,k) = normx(i,j,k)*normag
-               normy_f(i,j,k) = normy(i,j,k)*normag
-               normz_f(i,j,k) = normz(i,j,k)*normag
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
       ! Compute sharpening term flux split
       !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
@@ -528,26 +513,14 @@ do t=tstart,tfin
 
       ! second stage of RK4 - saved in rhsphik2
       !$acc parallel loop collapse(3) present(phi, phi_tmp, rhsphi)
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
+      do k=1+halo_ext, piX%shape(3)-halo_ext
+         do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
                phi_tmp(i,j,k) = phi(i,j,k) + 0.5d0 * dt * rhsphi(i,j,k)
             enddo
          enddo
       enddo
-      !$acc end parallel loop
-      ! apply BC on phi_tmp (no-flux)
-      !$acc parallel loop collapse(3)
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
-            do i=1,nx
-               kg = piX%lo(3) + k - 1 - halo_ext                   
-               if (kg .eq. 1)    phi_tmp(i,j,k-1) =  phi_tmp(i,j,k)     
-               if (kg .eq. nz)   phi_tmp(i,j,k+1) =  phi_tmp(i,j,k)     
-            enddo
-         enddo
-      enddo
-      ! 4.3 Call halo exchanges along Y and Z for phi 
+
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
@@ -560,8 +533,6 @@ do t=tstart,tfin
                ! compute distance function psi (used to compute normals)
                val = min(phi_tmp(i,j,k),1.0d0) ! avoid machine precision overshoots in phi that leads to problem with log
                psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
-               ! compute here the tanh of distance function psi (used in the sharpening term) to avoid multiple computations of tanh
-               tanh_psi(i,j,k) = tanh(0.5d0*psidi(i,j,k)*epsi)
             enddo
          enddo
       enddo
@@ -662,25 +633,14 @@ do t=tstart,tfin
 
       ! third stage of RK4 - saved in rhsphik3
       !$acc parallel loop collapse(3) present(phi, phi_tmp, rhsphik2)
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
+      do k=1+halo_ext, piX%shape(3)-halo_ext
+         do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
                phi_tmp(i,j,k) = phi(i,j,k) + 0.5d0*dt*rhsphik2(i,j,k)
             enddo
          enddo
       enddo
       !$acc end parallel loop
-      ! apply BC on phi_tmp (no-flux)
-      !$acc parallel loop collapse(3)
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
-            do i=1,nx
-               kg = piX%lo(3) + k - 1 - halo_ext                   
-               if (kg .eq. 1)    phi_tmp(i,j,k-1) =  phi_tmp(i,j,k)     
-               if (kg .eq. nz)   phi_tmp(i,j,k+1) =  phi_tmp(i,j,k)     
-            enddo
-         enddo
-      enddo
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
@@ -694,8 +654,6 @@ do t=tstart,tfin
                ! compute distance function psi (used to compute normals)
                val = min(phi_tmp(i,j,k),1.0d0) ! avoid machine precision overshoots in phi that leads to problem with log
                psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
-               ! compute here the tanh of distance function psi (used in the sharpening term) to avoid multiple computations of tanh
-               tanh_psi(i,j,k) = tanh(0.5d0*psidi(i,j,k)*epsi)
             enddo
          enddo
       enddo
@@ -796,25 +754,14 @@ do t=tstart,tfin
 
       ! forth stage of RK4 - saved in rhsphik4
       !$acc parallel loop collapse(3) present(phi, phi_tmp, rhsphik3)
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
+      do k=1+halo_ext, piX%shape(3)-halo_ext
+         do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
                phi_tmp(i,j,k) = phi(i,j,k) + dt * rhsphik3(i,j,k)
             enddo
          enddo
       enddo
       !$acc end parallel loop
-      ! apply BC on phi_tmp (no-flux)
-      !$acc parallel loop collapse(3)
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
-            do i=1,nx
-               kg = piX%lo(3) + k - 1 - halo_ext                   
-               if (kg .eq. 1)    phi_tmp(i,j,k-1) =  phi_tmp(i,j,k)     
-               if (kg .eq. nz)   phi_tmp(i,j,k+1) =  phi_tmp(i,j,k)     
-            enddo
-         enddo
-      enddo
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
@@ -828,8 +775,6 @@ do t=tstart,tfin
                ! compute distance function psi (used to compute normals)
                val = min(phi_tmp(i,j,k),1.0d0) ! avoid machine precision overshoots in phi that leads to problem with log
                psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
-               ! compute here the tanh of distance function psi (used in the sharpening term) to avoid multiple computations of tanh
-               tanh_psi(i,j,k) = tanh(0.5d0*psidi(i,j,k)*epsi)
             enddo
          enddo
       enddo
@@ -939,17 +884,6 @@ do t=tstart,tfin
          enddo
       enddo
       !$acc end kernels
-      ! apply BC on phi_tmp (no-flux)
-      !$acc parallel loop collapse(3)
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
-            do i=1,nx
-               kg = piX%lo(3) + k - 1 - halo_ext                   
-               if (kg .eq. 1)    phi(i,j,k-1) =  phi(i,j,k)     
-               if (kg .eq. nz)   phi(i,j,k+1) =  phi(i,j,k)     
-            enddo
-         enddo
-      enddo
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
