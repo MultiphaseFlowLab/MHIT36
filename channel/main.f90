@@ -520,7 +520,7 @@ do t=tstart,tfin
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               rhsphi(i,j,k)=rhsphi(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
+               rhsphi(i,j,k)=rhsphi(i,j,k)- (sharpxp-sharpxm)*dxi - (sharpyp-sharpym)*dyi  -(sharpzp-sharpzm)/dz
             enddo
          enddo
       enddo
@@ -654,7 +654,7 @@ do t=tstart,tfin
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               rhsphik2(i,j,k)=rhsphik2(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
+               rhsphik2(i,j,k)=rhsphik2(i,j,k) - (sharpxp-sharpxm)*dxi - (sharpyp-sharpym)*dyi - (sharpzp-sharpzm)/dz
             enddo
          enddo
       enddo
@@ -788,7 +788,7 @@ do t=tstart,tfin
                sharpyp = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.d0)*rn_13)
-               rhsphik3(i,j,k)=rhsphik3(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
+               rhsphik3(i,j,k)=rhsphik3(i,j,k) - (sharpxp-sharpxm)*dxi - (sharpyp-sharpym)*dyi - (sharpzp-sharpzm)/dz
             enddo
          enddo
       enddo
@@ -922,7 +922,7 @@ do t=tstart,tfin
                sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
                sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
                sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               rhsphik4(i,j,k)=rhsphik4(i,j,k)-dxi*((sharpxp-sharpxm)+(sharpyp-sharpym)+(sharpzp-sharpzm))
+               rhsphik4(i,j,k)=rhsphik4(i,j,k) - (sharpxp-sharpxm)*dxi - (sharpyp-sharpym)*dyi - (sharpzp-sharpzm)/dz
             enddo
          enddo
       enddo
