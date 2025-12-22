@@ -55,7 +55,7 @@ integer :: offsets(3), xoff, yoff
 integer :: np(3)
 
 ! Enable or disable phase field (acceleration eneabled by default)
-#define phiflag 0
+#define phiflag 1
 ! Enable or disable particle Lagrangian tracking (tracers)
 #define partflag 0
 
@@ -287,6 +287,8 @@ allocate(div(piX%shape(1),piX%shape(2),piX%shape(3)))
 #if phiflag == 1
 allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),k_stage(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(phi_tmp(piX%shape(1),piX%shape(2),piX%shape(3)),phi_eval(piX%shape(1),piX%shape(2),piX%shape(3)),phi_old(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(cx(piX%shape(1),piX%shape(2),piX%shape(3)),cy(piX%shape(1),piX%shape(2),piX%shape(3)),cz(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(ax(piX%shape(1),piX%shape(2),piX%shape(3)),ay(piX%shape(1),piX%shape(2),piX%shape(3)),az(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(psidi(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(normx(piX%shape(1),piX%shape(2),piX%shape(3)),normy(piX%shape(1),piX%shape(2),piX%shape(3)),normz(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(fxst(piX%shape(1),piX%shape(2),piX%shape(3)),fyst(piX%shape(1),piX%shape(2),piX%shape(3)),fzst(piX%shape(1),piX%shape(2),piX%shape(3))) ! surface tension forces
@@ -586,7 +588,7 @@ do t=tstart,tfin
       enddo
 
       ! Update convective halos + normales halos, required to then compute normal derivative
-      !$acc host_data use_device(cx,cy,cz,normx.normy,normz)
+      !$acc host_data use_device(cx,cy,cz,normx,normy,normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
@@ -640,11 +642,10 @@ do t=tstart,tfin
                jp=j+1
                kp=k+1
                if (ip .gt. nx) ip=1
-               k_stage(i,j,k) = -(cx(ip,j,k)-cx(i,j,k))*dxi-(cy(i,jp,k)-cy(i,j,k))*dxi-(cz(i,j,kp)-cz(i,j,k))*dzi &
-                               + (ax(ip,j,k)-ax(i,j,k))*dxi+(ay(i,jp,k)-ay(i,j,k))*dxi+(az(i,j,kp)-az(i,j,k))*dzi
+               k_stage(i,j,k) = -(cx(ip,j,k)-cx(i,j,k))*dxi-(cy(i,jp,k)-cy(i,j,k))*dxi-(cz(i,j,kp)-cz(i,j,k))*dxi &
+                               + (ax(ip,j,k)-ax(i,j,k))*dxi+(ay(i,jp,k)-ay(i,j,k))*dxi+(az(i,j,kp)-az(i,j,k))*dxi
                phi_tmp(i,j,k) = phi_tmp(i,j,k) + weight*dt*k_stage(i,j,k)
                phi(i,j,k)=phi_old(i,j,k) + phi_tmp(i,j,k)
-               enddo
             enddo
          enddo
       enddo
@@ -654,6 +655,7 @@ do t=tstart,tfin
     enddo ! end RK4 stages
    ! (uncomment for profiling)
    ! call nvtxEndRange
+    #endif
    !########################################################################################################################################
    ! END STEP 5: PHASE-FIELD SOLVER 
    !########################################################################################################################################
@@ -750,7 +752,7 @@ do t=tstart,tfin
                if (ip .gt. nx) ip=1
                if (im .lt. 1) im=nx
                ! continuum-surface force implementation
-               curv=0.5d0*(normx_f(ip,j,k)-normx_f(im,j,k))*dxi + 0.5d0*(normy_f(i,jp,k)-normy_f(i,jm,k))*dxi + 0.5d0*(normz_f(i,j,kp)-normz_f(i,j,km))*dxi
+               curv=0.5d0*(normx(ip,j,k)-normx(im,j,k))*dxi + 0.5d0*(normy(i,jp,k)-normy(i,jm,k))*dxi + 0.5d0*(normz(i,j,kp)-normz(i,j,km))*dxi
                !compute capillary forces: sigma*curvature*gradphi
                fxst(i,j,k)= -sigma*curv*0.5d0*(phi(ip,j,k)-phi(im,j,k))*dxi
                fyst(i,j,k)= -sigma*curv*0.5d0*(phi(i,jp,k)-phi(i,jm,k))*dxi
@@ -1069,14 +1071,14 @@ deallocate(buffvar2)
 ! Remove allocated variables (add new)
 deallocate(x_ext)
 deallocate(u,v,w)
-deallocate(tanh_psi, mysin, mycos)
+!deallocate(tanh_psi, mysin, mycos)
 deallocate(rhsu,rhsv,rhsw)
 deallocate(rhsu_o,rhsv_o,rhsw_o)
-deallocate(phi,rhsphi,normx,normy,normz)
-deallocate(normx_f, normy_f, normz_f)
-deallocate(fxst, fyst, fzst)
-deallocate(phi_tmp, rhsphik2, rhsphik3, rhsphik4)
-deallocate(psidi, tanh_psi)
+!deallocate(phi,rhsphi,normx,normy,normz)
+!deallocate(normx_f, normy_f, normz_f)
+!deallocate(fxst, fyst, fzst)
+!deallocate(phi_tmp, rhsphik2, rhsphik3, rhsphik4)
+!deallocate(psidi, tanh_psi)
 
 call mpi_finalize(ierr)
 

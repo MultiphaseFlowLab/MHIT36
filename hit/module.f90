@@ -1,11 +1,11 @@
 module param
-    integer, parameter :: nx=512
+    integer, parameter :: nx=128
     integer :: ny=nx,nz=nx
     double precision :: pi,lx,dx,dxi,ddxi,rhoi,twopi
-    integer :: restart,tstart,tfin,dump
-    double precision :: gamma, normag
+    integer :: restart, tstart, tfin, dump
+    double precision :: gamma, normag, weight
     double precision :: dt,mu,rho !flow parameters
-    integer :: inflow, inphi
+    integer :: inflow, inphi, stage
     double precision :: f1,f2,f3,k0 ! forcing parameters
     double precision :: radius, sigma, epsr, eps, pos, val, epsi, enum ! phase-field parameters
     double precision :: times,timef
