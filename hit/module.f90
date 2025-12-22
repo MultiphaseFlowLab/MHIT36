@@ -64,17 +64,13 @@ end module velocity
 
 
 module phase
-   double precision, allocatable :: phi(:,:,:), rhsphi(:,:,:), psidi(:,:,:), tanh_psi(:,:,:)
+   double precision, allocatable :: phi(:,:,:), psidi(:,:,:)
+   double precision, allocatable :: phi_eval(:,:,:), phi_old(:,:,:), phi_tmp(:,:,:),k_stage(:,:,:)
    double precision, allocatable :: normx(:,:,:), normy(:,:,:), normz(:,:,:)
-   double precision, allocatable :: normx_f(:,:,:), normy_f(:,:,:), normz_f(:,:,:)
-   double precision :: curv
+   double precision, allocatable :: ax(:,:,:), ay(:,:,:), az(:,:,:)
+   double precision, allocatable :: cx(:,:,:), cy(:,:,:), cz(:,:,:)
+   double precision :: curv, psidimx, psidimy, psidimz
    double precision, allocatable :: fxst(:,:,:), fyst(:,:,:), fzst(:,:,:)
-   double precision, allocatable :: rhsphik2(:,:,:), rhsphik3(:,:,:), rhsphik4(:,:,:), phi_tmp(:,:,:)
-   double precision :: normx_xm,normx_xp,normx_ym,normx_yp,normx_zm,normx_zp
-   double precision :: normy_xm,normy_xp,normy_ym,normy_yp,normy_zm,normy_zp
-   double precision :: normz_xm,normz_xp,normz_ym,normz_yp,normz_zm,normz_zp
-   double precision :: rn_01,rn_11,rn_02,rn_12,rn_03,rn_13
-   double precision :: sharpxm,sharpxp,sharpym,sharpyp,sharpzm,sharpzp
 end module phase
 
 

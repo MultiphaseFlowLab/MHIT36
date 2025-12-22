@@ -417,7 +417,7 @@ do t=tstart,tfin
 
       gamma=1.d0*gumax ! update gamma every time step with the current max velocity value
       if (rank.eq.0) write(*,*) "gamma:", gamma
-      !$acc parallel loop tile(16,4,2)
+      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
@@ -449,6 +449,7 @@ do t=tstart,tfin
             enddo
          enddo
       enddo
+      !$acc end kernels
 
       ! Update normx,normy and normz halos, required to then compute normal derivative
       !$acc host_data use_device(normx,normy,normz)
@@ -512,7 +513,7 @@ do t=tstart,tfin
       !$acc end kernels
 
       ! second stage of RK4 - saved in rhsphik2
-      !$acc parallel loop collapse(3) present(phi, phi_tmp, rhsphi)
+      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
@@ -520,6 +521,7 @@ do t=tstart,tfin
             enddo
          enddo
       enddo
+      !$acc end kernels
 
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
@@ -538,7 +540,7 @@ do t=tstart,tfin
       enddo
       !$acc end kernels
 
-      !$acc parallel loop tile(16,4,2)
+      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
@@ -570,6 +572,7 @@ do t=tstart,tfin
             enddo
          enddo
       enddo
+      !$acc end kernels
 
       ! Update normx,normy and normz halos, required to then compute normal derivative
       !$acc host_data use_device(normx,normy,normz)
@@ -632,7 +635,7 @@ do t=tstart,tfin
       !$acc end kernels
 
       ! third stage of RK4 - saved in rhsphik3
-      !$acc parallel loop collapse(3) present(phi, phi_tmp, rhsphik2)
+      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
@@ -640,7 +643,7 @@ do t=tstart,tfin
             enddo
          enddo
       enddo
-      !$acc end parallel loop
+      !$acc end kernels
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
@@ -659,7 +662,7 @@ do t=tstart,tfin
       enddo
       !$acc end kernels
 
-      !$acc parallel loop tile(16,4,2)
+      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
@@ -691,6 +694,7 @@ do t=tstart,tfin
             enddo
          enddo
       enddo
+      !$acc end kernels
 
       ! Update normx,normy and normz halos, required to then compute normal derivative
       !$acc host_data use_device(normx,normy,normz)
@@ -753,7 +757,7 @@ do t=tstart,tfin
       !$acc end kernels
 
       ! forth stage of RK4 - saved in rhsphik4
-      !$acc parallel loop collapse(3) present(phi, phi_tmp, rhsphik3)
+      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
@@ -761,7 +765,8 @@ do t=tstart,tfin
             enddo
          enddo
       enddo
-      !$acc end parallel loop
+      !$acc end kernels
+
       ! 4.3 Call halo exchanges along Y and Z for phi 
       !$acc host_data use_device(phi_tmp)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
@@ -780,7 +785,7 @@ do t=tstart,tfin
       enddo
       !$acc end kernels      
 
-      !$acc parallel loop tile(16,4,2)
+      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
@@ -812,6 +817,7 @@ do t=tstart,tfin
             enddo
          enddo
       enddo
+      !$acc end kernels
 
       ! Update normx,normy and normz halos, required to then compute normal derivative
       !$acc host_data use_device(normx,normy,normz)
