@@ -514,6 +514,10 @@ do t=tstart,tfin
    ! END STEP 4: PARTICLES
    !########################################################################################################################################
 
+
+
+
+
    
    ! (uncomment for profiling)
    ! call nvtxStartRange("Phase-field")
@@ -522,26 +526,47 @@ do t=tstart,tfin
    !########################################################################################################################################
    #if phiflag == 1
    ! 4.2 Get phi at n+1 using RK4 + skew-symmetric splitting
-
+   gamma=1.d0*gumax
    phi_old = phi
    ! Reset accumulator for the new time step
    phi_tmp = 0.d0  ! Reset accumulator for the new time step
    
    ! RK4 Stages
    do stage = 1, 4
-      if (stage == 1) then
-         phi_eval = phi_old
+      select case(stage)
+      case(1)
+         !$acc parallel loop collapse(3)
+         do k=1+halo_ext, piX%shape(3)-halo_ext
+            do j=1+halo_ext, piX%shape(2)-halo_ext
+               do i=1,nx
+                  phi_eval(i,j,k) = phi_old(i,j,k)
+               enddo
+            enddo
+         enddo
          weight = 1.d0/6.d0
-      else if (stage == 2) then
-         phi_eval = phi_old + 0.5d0*dt*k_stage
+
+         case(2,3)
+         !$acc parallel loop collapse(3)
+         do k=1+halo_ext, piX%shape(3)-halo_ext
+            do j=1+halo_ext, piX%shape(2)-halo_ext
+               do i=1,nx
+                  phi_eval(i,j,k) = phi_old(i,j,k) + 0.5d0*dt*k_stage(i,j,k)
+               enddo
+            enddo
+         enddo
          weight = 2.d0/6.d0
-      else if (stage == 3) then
-         phi_eval = phi_old + 0.5d0*dt*k_stage
-         weight = 2.d0/6.d0
-      else
-         phi_eval = phi_old + dt*k_stage
+
+         case(4)
+         !$acc parallel loop collapse(3)
+         do k=1+halo_ext, piX%shape(3)-halo_ext
+            do j=1+halo_ext, piX%shape(2)-halo_ext
+               do i=1,nx
+                  phi_eval(i,j,k) = phi_old(i,j,k) + dt*k_stage(i,j,k)
+               enddo
+            enddo
+         enddo
          weight = 1.d0/6.d0
-      end if
+      end select
 
       !$acc host_data use_device(phi_eval)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_eval, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
