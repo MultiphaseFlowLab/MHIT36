@@ -401,27 +401,77 @@ do t=tstart,tfin
    ! START STEP 4: PHASE-FIELD SOLVER (EXPLICIT RK4 + FLUX SPLITTING)
    !########################################################################################################################################
    #if phiflag == 1
-      ! 4.2 Get phi at n+1 using RK4
-      ! first stage of RK4 - saved in rhsphi
+   ! 4.2 Get phi at n+1 using RK4 + skew-symmetric splitting
+   !$acc data present(phi,phi_old,phi_tmp,phi_eval,k_stage,psidi,cx,cy,cz,normx,normy,normz,u,v,w)
+   gamma=1.d0*gumax
+   ! Reset accumulator for the new time step
+   !$acc parallel loop collapse(3)
+   do k=1+halo_ext, piX%shape(3)-halo_ext
+      do j=1+halo_ext, piX%shape(2)-halo_ext
+         do i=1,nx
+            phi_old(i,j,k) = phi(i,j,k)
+            phi_tmp(i,j,k) = 0.d0
+         enddo
+      enddo
+   enddo
+   
+   ! RK4 Stages
+   do stage = 1, 4
+      select case(stage)
+      case(1)
+         !$acc parallel loop collapse(3)
+         do k=1+halo_ext, piX%shape(3)-halo_ext
+            do j=1+halo_ext, piX%shape(2)-halo_ext
+               do i=1,nx
+                  phi_eval(i,j,k) = phi_old(i,j,k)
+               enddo
+            enddo
+         enddo
+         weight = 1.d0/6.d0
+
+         case(2,3)
+         !$acc parallel loop collapse(3)
+         do k=1+halo_ext, piX%shape(3)-halo_ext
+            do j=1+halo_ext, piX%shape(2)-halo_ext
+               do i=1,nx
+                  phi_eval(i,j,k) = phi_old(i,j,k) + 0.5d0*dt*k_stage(i,j,k)
+               enddo
+            enddo
+         enddo
+         weight = 2.d0/6.d0
+
+         case(4)
+         !$acc parallel loop collapse(3)
+         do k=1+halo_ext, piX%shape(3)-halo_ext
+            do j=1+halo_ext, piX%shape(2)-halo_ext
+               do i=1,nx
+                  phi_eval(i,j,k) = phi_old(i,j,k) + dt*k_stage(i,j,k)
+               enddo
+            enddo
+         enddo
+         weight = 1.d0/6.d0
+      end select
+
+      !$acc host_data use_device(phi_eval)
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_eval, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_eval, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+      !$acc end host_data
+
       !$acc kernels
       do k=1, piX%shape(3)
          do j=1, piX%shape(2)
             do i=1,nx
                ! compute distance function psi (used to compute normals)
-               val = min(phi(i,j,k),1.0d0) ! avoid machine precision overshoots in phi that leads to problem with log
+               val = min(phi_eval(i,j,k),1.0d0) 
                psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
             enddo
          enddo
       enddo
-      !$acc end kernels
 
-      gamma=1.d0*gumax ! update gamma every time step with the current max velocity value
-      if (rank.eq.0) write(*,*) "gamma:", gamma
-      !$acc kernels
+      ! 2. Compute normals and convectiv fluxes
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
-               ! 4.1 RHS computation
                ip=i+1
                jp=j+1
                kp=k+1
@@ -430,28 +480,23 @@ do t=tstart,tfin
                km=k-1
                if (ip .gt. nx) ip=1
                if (im .lt. 1) im=nx
-               ! convective (first six lines) and diffusive (last three lines)                     
-               ! flux-splitting
-               rhsphi(i,j,k) =   &
-                     - (max(u(ip,j,k),0.0d0)*phi(i,j,k) + min(u(ip,j,k),0.0d0)*phi(ip,j,k) - &
-                        min(u(i,j,k),0.0d0)*phi(i,j,k) - max(u(i,j,k),0.0d0)*phi(im,j,k))*dxi  &
-                     - (max(v(i,jp,k),0.0d0)*phi(i,j,k) + min(v(i,jp,k),0.0d0)*phi(i,jp,k) - &
-                        min(v(i,j,k),0.0d0)*phi(i,j,k) - max(v(i,j,k),0.0d0)*phi(i,jm,k))*dyi  &
-                     - (max(w(i,j,kp),0.0d0)*phi(i,j,k) + min(w(i,j,kp),0.0d0)*phi(i,j,kp) - &
-                        min(w(i,j,k),0.0d0)*phi(i,j,k) - max(w(i,j,k),0.0d0)*phi(i,j,km))/dz  &
-                           + gamma*(eps*(phi(ip,j,k)-2.d0*phi(i,j,k)+phi(im,j,k))*ddxi + &
-                                    eps*(phi(i,jp,k)-2.d0*phi(i,j,k)+phi(i,jm,k))*ddyi + &
-                                    eps*(phi(i,j,kp)-2.d0*phi(i,j,k)+phi(i,j,km))*ddzi)
-               ! 4.1.3. Compute normals for sharpening term (gradient)
+               kg=piX%lo(3) + k - 1 - halo_ext
+               cx(i,j,k) = -u(i,j,k)*0.5d0*(phi_eval(i,j,k) + phi_eval(im,j,k))
+               cy(i,j,k) = -v(i,j,k)*0.5d0*(phi_eval(i,j,k) + phi_eval(i,jm,k))
+               cz(i,j,k) = -w(i,j,k)*0.5d0*(phi_eval(i,j,k) + phi_eval(i,j,km))
                normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
                normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
-               normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))/dz
+               normz(i,j,k) =       (psidi(i,j,kp) - psidi(i,j,km))/(z(kg+1)-z(kg-1))
+               normag = 1.d0/(sqrt(normx(i,j,k)*normx(i,j,k) + normy(i,j,k)*normy(i,j,k) + normz(i,j,k)*normz(i,j,k)) + enum)
+               normx(i,j,k) = normx(i,j,k)*normag
+               normy(i,j,k) = normy(i,j,k)*normag
+               normz(i,j,k) = normz(i,j,k)*normag
             enddo
          enddo
       enddo
       !$acc end kernels
 
-      ! Update normx,normy and normz halos, required to then compute normal derivative
+      ! Update convective halos + normales halos, required to then compute normal derivative
       !$acc host_data use_device(normx,normy,normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
@@ -461,441 +506,72 @@ do t=tstart,tfin
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data
 
-      ! Substep 2: Compute normals (1.e-16 is a numerical tollerance to avoid 0/0) for surface tension force computation later
-      ! Compute sharpening term flux split
       !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
-               ip=i+1
-               jp=j+1
-               kp=k+1
                im=i-1
                jm=j-1
                km=k-1
-               if (ip .gt. nx) ip=1
                if (im .lt. 1) im=nx
-               normx_xm = 0.5d0*(normx(im,j,k)+normx(i,j,k))
-               normx_xp = 0.5d0*(normx(ip,j,k)+normx(i,j,k))
-               normx_ym = 0.5d0*(normx(i,jm,k)+normx(i,j,k))
-               normx_yp = 0.5d0*(normx(i,jp,k)+normx(i,j,k))
-               normx_zm = 0.5d0*(normx(i,j,km)+normx(i,j,k))
-               normx_zp = 0.5d0*(normx(i,j,kp)+normx(i,j,k))
-               normy_xm = 0.5d0*(normy(im,j,k)+normy(i,j,k))
-               normy_xp = 0.5d0*(normy(ip,j,k)+normy(i,j,k))
-               normy_ym = 0.5d0*(normy(i,jm,k)+normy(i,j,k))
-               normy_yp = 0.5d0*(normy(i,jp,k)+normy(i,j,k))
-               normy_zm = 0.5d0*(normy(i,j,km)+normy(i,j,k))
-               normy_zp = 0.5d0*(normy(i,j,kp)+normy(i,j,k))
-               normz_xm = 0.5d0*(normz(im,j,k)+normz(i,j,k))
-               normz_xp = 0.5d0*(normz(ip,j,k)+normz(i,j,k))
-               normz_ym = 0.5d0*(normz(i,jm,k)+normz(i,j,k))
-               normz_yp = 0.5d0*(normz(i,jp,k)+normz(i,j,k))
-               normz_zm = 0.5d0*(normz(i,j,km)+normz(i,j,k))
-               normz_zp = 0.5d0*(normz(i,j,kp)+normz(i,j,k))
-               ! sharpening term
-               rn_01 = normx_xm/(sqrt(normx_xm**2.0d0+normy_xm**2.0d0+normz_xm**2.0d0)+enum)
-               rn_11 = normx_xp/(sqrt(normx_xp**2.0d0+normy_xp**2.0d0+normz_xp**2.0d0)+enum)
-               rn_02 = normy_ym/(sqrt(normx_ym**2.0d0+normy_ym**2.0d0+normz_ym**2.0d0)+enum)
-               rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.0d0+normz_yp**2.0d0)+enum)
-               rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.0d0+normz_zm**2.0d0)+enum)
-               rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.0d0+normz_zp**2.0d0)+enum)
-               sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
-               sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
-               sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
-               sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
-               sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
-               sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               rhsphi(i,j,k)=rhsphi(i,j,k)- (sharpxp-sharpxm)*dxi - (sharpyp-sharpym)*dyi  -(sharpzp-sharpzm)/dz
+               kg=piX%lo(3) + k - 1 - halo_ext
+               cx(i,j,k) = cx(i,j,k) + gamma*eps*(phi_eval(i,j,k)-phi_eval(im,j,k))*dxi
+               cy(i,j,k) = cy(i,j,k) + gamma*eps*(phi_eval(i,j,k)-phi_eval(i,jm,k))*dyi
+               cz(i,j,k) = cz(i,j,k) + gamma*eps*(phi_eval(i,j,k)-phi_eval(i,j,km))*dzi(kg)    
+               psidimx = 0.5d0*(psidi(i,j,k)+psidi(im,j,k))
+               psidimy = 0.5d0*(psidi(i,j,k)+psidi(i,jm,k))
+               psidimz = 0.5d0*(psidi(i,j,k)+psidi(i,j,km))
+               cx(i,j,k) = cx(i,j,k) - 0.25d0*gamma*(1.d0-(dtanh(psidimx/(2.d0*eps)))**2)*0.5d0*(normx(i,j,k)+normx(im,j,k))
+               cy(i,j,k) = cy(i,j,k) - 0.25d0*gamma*(1.d0-(dtanh(psidimy/(2.d0*eps)))**2)*0.5d0*(normy(i,j,k)+normy(i,jm,k))
+               cz(i,j,k) = cz(i,j,k) - 0.25*gamma*(1.d0-(dtanh(psidimz/(2.d0*eps)))**2)*0.5d0*(normz(i,j,k)+normz(i,j,km))
             enddo
          enddo
       enddo
       !$acc end kernels
 
-      ! second stage of RK4 - saved in rhsphik2
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               phi_tmp(i,j,k) = phi(i,j,k) + 0.5d0 * dt * rhsphi(i,j,k)
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      !$acc host_data use_device(phi_tmp)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+      !$acc host_data use_device(cx,cy,cz)
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data
 
       !$acc kernels
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
-            do i=1,nx
-               ! compute distance function psi (used to compute normals)
-               val = min(phi_tmp(i,j,k),1.0d0) ! avoid machine precision overshoots in phi that leads to problem with log
-               psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               ! 4.1 RHS computation
-               ip=i+1
-               jp=j+1
-               kp=k+1
-               im=i-1
-               jm=j-1
-               km=k-1
-               if (ip .gt. nx) ip=1
-               if (im .lt. 1) im=nx
-               ! convective (first three lines) and diffusive (last three lines)                  
-               ! flux-splitting
-               rhsphik2(i,j,k) =   &
-                     - (max(u(ip,j,k),0.0d0)*phi_tmp(i,j,k) + min(u(ip,j,k),0.0d0)*phi_tmp(ip,j,k) - &
-                        min(u(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(u(i,j,k),0.0d0)*phi_tmp(im,j,k))*dxi  &
-                     - (max(v(i,jp,k),0.0d0)*phi_tmp(i,j,k) + min(v(i,jp,k),0.0d0)*phi_tmp(i,jp,k) - &
-                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dyi  &
-                     - (max(w(i,j,kp),0.0d0)*phi_tmp(i,j,k) + min(w(i,j,kp),0.0d0)*phi_tmp(i,j,kp) - &
-                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))/dz  &
-                           + gamma*(eps*(phi_tmp(ip,j,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(im,j,k))*ddxi + &
-                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddyi + &
-                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddzi)
-               ! 4.1.3. Compute normals for sharpening term (gradient)
-               normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
-               normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
-               normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))/dz
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      ! Update normx,normy and normz halos, required to then compute normal derivative
-      !$acc host_data use_device(normx,normy,normz)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-
-      ! Compute sharpening term
-      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
                ip=i+1
                jp=j+1
                kp=k+1
-               im=i-1
-               jm=j-1
-               km=k-1
                if (ip .gt. nx) ip=1
-               if (im .lt. 1) im=nx
-               normx_xm = 0.5d0*(normx(im,j,k)+normx(i,j,k))
-               normx_xp = 0.5d0*(normx(ip,j,k)+normx(i,j,k))
-               normx_ym = 0.5d0*(normx(i,jm,k)+normx(i,j,k))
-               normx_yp = 0.5d0*(normx(i,jp,k)+normx(i,j,k))
-               normx_zm = 0.5d0*(normx(i,j,km)+normx(i,j,k))
-               normx_zp = 0.5d0*(normx(i,j,kp)+normx(i,j,k))
-               normy_xm = 0.5d0*(normy(im,j,k)+normy(i,j,k))
-               normy_xp = 0.5d0*(normy(ip,j,k)+normy(i,j,k))
-               normy_ym = 0.5d0*(normy(i,jm,k)+normy(i,j,k))
-               normy_yp = 0.5d0*(normy(i,jp,k)+normy(i,j,k))
-               normy_zm = 0.5d0*(normy(i,j,km)+normy(i,j,k))
-               normy_zp = 0.5d0*(normy(i,j,kp)+normy(i,j,k))
-               normz_xm = 0.5d0*(normz(im,j,k)+normz(i,j,k))
-               normz_xp = 0.5d0*(normz(ip,j,k)+normz(i,j,k))
-               normz_ym = 0.5d0*(normz(i,jm,k)+normz(i,j,k))
-               normz_yp = 0.5d0*(normz(i,jp,k)+normz(i,j,k))
-               normz_zm = 0.5d0*(normz(i,j,km)+normz(i,j,k))
-               normz_zp = 0.5d0*(normz(i,j,kp)+normz(i,j,k))
-               ! sharpening term
-               rn_01 = normx_xm/(sqrt(normx_xm**2.0d0+normy_xm**2.0d0+normz_xm**2.0d0)+enum)
-               rn_11 = normx_xp/(sqrt(normx_xp**2.0d0+normy_xp**2.0d0+normz_xp**2.0d0)+enum)
-               rn_02 = normy_ym/(sqrt(normx_ym**2.0d0+normy_ym**2.0d0+normz_ym**2.0d0)+enum)
-               rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.0d0+normz_yp**2.0d0)+enum)
-               rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.0d0+normz_zm**2.0d0)+enum)
-               rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.0d0+normz_zp**2.0d0)+enum)
-               sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
-               sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
-               sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
-               sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
-               sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
-               sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               rhsphik2(i,j,k)=rhsphik2(i,j,k) - (sharpxp-sharpxm)*dxi - (sharpyp-sharpym)*dyi - (sharpzp-sharpzm)/dz
+               kg=piX%lo(3) + k - 1 - halo_ext
+               k_stage(i,j,k) = (cx(ip,j,k)-cx(i,j,k))*dxi + (cy(i,jp,k)-cy(i,j,k))*dyi + (cz(i,j,kp)-cz(i,j,k))*dzci(kg)
+               phi_tmp(i,j,k) = phi_tmp(i,j,k) + weight*dt*k_stage(i,j,k)
+               phi(i,j,k)=phi_old(i,j,k) + phi_tmp(i,j,k)
+               ! impose BCs at top and bottom (every RK stage as in NS)
+               if (kg .eq. 0)      phi(i,j,k) = phi(i,j,k+1)  
+               if (kg .eq. nz+1)   phi(i,j,k) = phi(i,j,k-1)  
             enddo
          enddo
       enddo
       !$acc end kernels
+    enddo ! end RK4 stages
 
-      ! third stage of RK4 - saved in rhsphik3
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               phi_tmp(i,j,k) = phi(i,j,k) + 0.5d0*dt*rhsphik2(i,j,k)
-            enddo
+   ! clip phi between 0 and 1 + impose BCs?
+   !$acc parallel loop collapse(3)
+   do k=1+halo_ext, piX%shape(3)-halo_ext
+      do j=1+halo_ext, piX%shape(2)-halo_ext
+         do i=1,nx
+            phi(i,j,k) = min(1.d0, max(0.d0, phi(i,j,k)))
          enddo
       enddo
-      !$acc end kernels
-      ! 4.3 Call halo exchanges along Y and Z for phi 
-      !$acc host_data use_device(phi_tmp)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-      
-      !$acc kernels
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
-            do i=1,nx
-               ! compute distance function psi (used to compute normals)
-               val = min(phi_tmp(i,j,k),1.0d0) ! avoid machine precision overshoots in phi that leads to problem with log
-               psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               ! 4.1 RHS computation
-               ip=i+1
-               jp=j+1
-               kp=k+1
-               im=i-1
-               jm=j-1
-               km=k-1
-               if (ip .gt. nx) ip=1
-               if (im .lt. 1) im=nx
-               ! convective (first three lines) and diffusive (last three lines)                  
-               ! flux-splitting
-               rhsphik3(i,j,k) =   &
-                     - (max(u(ip,j,k),0.0d0)*phi_tmp(i,j,k) + min(u(ip,j,k),0.0d0)*phi_tmp(ip,j,k) - &
-                        min(u(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(u(i,j,k),0.0d0)*phi_tmp(im,j,k))*dxi  &
-                     - (max(v(i,jp,k),0.0d0)*phi_tmp(i,j,k) + min(v(i,jp,k),0.0d0)*phi_tmp(i,jp,k) - &
-                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dyi  &
-                     - (max(w(i,j,kp),0.0d0)*phi_tmp(i,j,k) + min(w(i,j,kp),0.0d0)*phi_tmp(i,j,kp) - &
-                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))/dz  &
-                           + gamma*(eps*(phi_tmp(ip,j,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(im,j,k))*ddxi + &
-                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddyi + &
-                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddzi)
-               ! 4.1.3. Compute normals for sharpening term (gradient)
-               normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
-               normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
-               normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))/dz
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      ! Update normx,normy and normz halos, required to then compute normal derivative
-      !$acc host_data use_device(normx,normy,normz)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data
-
-      ! Compute sharpening term
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               ip=i+1
-               jp=j+1
-               kp=k+1
-               im=i-1
-               jm=j-1
-               km=k-1
-               if (ip .gt. nx) ip=1
-               if (im .lt. 1) im=nx
-               normx_xm = 0.5d0*(normx(im,j,k)+normx(i,j,k))
-               normx_xp = 0.5d0*(normx(ip,j,k)+normx(i,j,k))
-               normx_ym = 0.5d0*(normx(i,jm,k)+normx(i,j,k))
-               normx_yp = 0.5d0*(normx(i,jp,k)+normx(i,j,k))
-               normx_zm = 0.5d0*(normx(i,j,km)+normx(i,j,k))
-               normx_zp = 0.5d0*(normx(i,j,kp)+normx(i,j,k))
-               normy_xm = 0.5d0*(normy(im,j,k)+normy(i,j,k))
-               normy_xp = 0.5d0*(normy(ip,j,k)+normy(i,j,k))
-               normy_ym = 0.5d0*(normy(i,jm,k)+normy(i,j,k))
-               normy_yp = 0.5d0*(normy(i,jp,k)+normy(i,j,k))
-               normy_zm = 0.5d0*(normy(i,j,km)+normy(i,j,k))
-               normy_zp = 0.5d0*(normy(i,j,kp)+normy(i,j,k))
-               normz_xm = 0.5d0*(normz(im,j,k)+normz(i,j,k))
-               normz_xp = 0.5d0*(normz(ip,j,k)+normz(i,j,k))
-               normz_ym = 0.5d0*(normz(i,jm,k)+normz(i,j,k))
-               normz_yp = 0.5d0*(normz(i,jp,k)+normz(i,j,k))
-               normz_zm = 0.5d0*(normz(i,j,km)+normz(i,j,k))
-               normz_zp = 0.5d0*(normz(i,j,kp)+normz(i,j,k))
-               ! sharpening term
-               rn_01 = normx_xm/(sqrt(normx_xm**2.d0+normy_xm**2.d0+normz_xm**2.d0)+enum)
-               rn_11 = normx_xp/(sqrt(normx_xp**2.d0+normy_xp**2.d0+normz_xp**2.d0)+enum)
-               rn_02 = normy_ym/(sqrt(normx_ym**2.d0+normy_ym**2.d0+normz_ym**2.d0)+enum)
-               rn_12 = normy_yp/(sqrt(normx_yp**2.d0+normy_yp**2.d0+normz_yp**2.d0)+enum)
-               rn_03 = normz_zm/(sqrt(normx_zm**2.d0+normy_zm**2.d0+normz_zm**2.d0)+enum)
-               rn_13 = normz_zp/(sqrt(normx_zp**2.d0+normy_zp**2.d0+normz_zp**2.d0)+enum)
-               sharpxm = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.d0)*rn_01)
-               sharpxp = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.d0)*rn_11)
-               sharpym = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.d0)*rn_02)
-               sharpyp = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.d0)*rn_12)
-               sharpzm = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.d0)*rn_03)
-               sharpzp = 0.25d0*gamma*((1.d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.d0)*rn_13)
-               rhsphik3(i,j,k)=rhsphik3(i,j,k) - (sharpxp-sharpxm)*dxi - (sharpyp-sharpym)*dyi - (sharpzp-sharpzm)/dz
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      ! forth stage of RK4 - saved in rhsphik4
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               phi_tmp(i,j,k) = phi(i,j,k) + dt * rhsphik3(i,j,k)
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      ! 4.3 Call halo exchanges along Y and Z for phi 
-      !$acc host_data use_device(phi_tmp)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_tmp, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data
-
-      !$acc kernels
-      do k=1, piX%shape(3)
-         do j=1, piX%shape(2)
-            do i=1,nx
-               ! compute distance function psi (used to compute normals)
-               val = min(phi_tmp(i,j,k),1.0d0) ! avoid machine precision overshoots in phi that leads to problem with log
-               psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
-            enddo
-         enddo
-      enddo
-      !$acc end kernels      
-
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               ! 4.1 RHS computation
-               ip=i+1
-               jp=j+1
-               kp=k+1
-               im=i-1
-               jm=j-1
-               km=k-1
-               if (ip .gt. nx) ip=1
-               if (im .lt. 1) im=nx
-               ! convective (first three lines) and diffusive (last three lines)                  
-               ! flux-splitting
-               rhsphik4(i,j,k) =   &
-                     - (max(u(ip,j,k),0.0d0)*phi_tmp(i,j,k) + min(u(ip,j,k),0.0d0)*phi_tmp(ip,j,k) - &
-                        min(u(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(u(i,j,k),0.0d0)*phi_tmp(im,j,k))*dxi  &
-                     - (max(v(i,jp,k),0.0d0)*phi_tmp(i,j,k) + min(v(i,jp,k),0.0d0)*phi_tmp(i,jp,k) - &
-                        min(v(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(v(i,j,k),0.0d0)*phi_tmp(i,jm,k))*dyi  &
-                     - (max(w(i,j,kp),0.0d0)*phi_tmp(i,j,k) + min(w(i,j,kp),0.0d0)*phi_tmp(i,j,kp) - &
-                        min(w(i,j,k),0.0d0)*phi_tmp(i,j,k) - max(w(i,j,k),0.0d0)*phi_tmp(i,j,km))/dz  &
-                           + gamma*(eps*(phi_tmp(ip,j,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(im,j,k))*ddxi + &
-                                    eps*(phi_tmp(i,jp,k)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,jm,k))*ddyi + &
-                                    eps*(phi_tmp(i,j,kp)-2.d0*phi_tmp(i,j,k)+phi_tmp(i,j,km))*ddzi)
-               ! 4.1.3. Compute normals for sharpening term (gradient)
-               normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
-               normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
-               normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))/dz
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      ! Update normx,normy and normz halos, required to then compute normal derivative
-      !$acc host_data use_device(normx,normy,normz)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-
-      ! Compute sharpening term
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               ip=i+1
-               jp=j+1
-               kp=k+1
-               im=i-1
-               jm=j-1
-               km=k-1
-               if (ip .gt. nx) ip=1
-               if (im .lt. 1) im=nx
-               normx_xm = 0.5d0*(normx(im,j,k)+normx(i,j,k))
-               normx_xp = 0.5d0*(normx(ip,j,k)+normx(i,j,k))
-               normx_ym = 0.5d0*(normx(i,jm,k)+normx(i,j,k))
-               normx_yp = 0.5d0*(normx(i,jp,k)+normx(i,j,k))
-               normx_zm = 0.5d0*(normx(i,j,km)+normx(i,j,k))
-               normx_zp = 0.5d0*(normx(i,j,kp)+normx(i,j,k))
-               normy_xm = 0.5d0*(normy(im,j,k)+normy(i,j,k))
-               normy_xp = 0.5d0*(normy(ip,j,k)+normy(i,j,k))
-               normy_ym = 0.5d0*(normy(i,jm,k)+normy(i,j,k))
-               normy_yp = 0.5d0*(normy(i,jp,k)+normy(i,j,k))
-               normy_zm = 0.5d0*(normy(i,j,km)+normy(i,j,k))
-               normy_zp = 0.5d0*(normy(i,j,kp)+normy(i,j,k))
-               normz_xm = 0.5d0*(normz(im,j,k)+normz(i,j,k))
-               normz_xp = 0.5d0*(normz(ip,j,k)+normz(i,j,k))
-               normz_ym = 0.5d0*(normz(i,jm,k)+normz(i,j,k))
-               normz_yp = 0.5d0*(normz(i,jp,k)+normz(i,j,k))
-               normz_zm = 0.5d0*(normz(i,j,km)+normz(i,j,k))
-               normz_zp = 0.5d0*(normz(i,j,kp)+normz(i,j,k))
-               ! sharpening term
-               rn_01 = normx_xm/(sqrt(normx_xm**2.0d0+normy_xm**2.d0+normz_xm**2.0d0)+enum)
-               rn_11 = normx_xp/(sqrt(normx_xp**2.0d0+normy_xp**2.d0+normz_xp**2.0d0)+enum)
-               rn_02 = normy_ym/(sqrt(normx_ym**2.0d0+normy_ym**2.d0+normz_ym**2.0d0)+enum)
-               rn_12 = normy_yp/(sqrt(normx_yp**2.0d0+normy_yp**2.d0+normz_yp**2.0d0)+enum)
-               rn_03 = normz_zm/(sqrt(normx_zm**2.0d0+normy_zm**2.d0+normz_zm**2.0d0)+enum)
-               rn_13 = normz_zp/(sqrt(normx_zp**2.0d0+normy_zp**2.d0+normz_zp**2.0d0)+enum)
-               sharpxm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(im,j,k))*epsi))**2.0d0)*rn_01)
-               sharpxp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_11)
-               sharpym = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,jm,k))*epsi))**2.0d0)*rn_02)
-               sharpyp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2.0d0)*rn_12)
-               sharpzm = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,k)+psidi(i,j,km))*epsi))**2.0d0)*rn_03)
-               sharpzp = 0.25d0*gamma*((1.0d0-(tanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2.0d0)*rn_13)
-               rhsphik4(i,j,k)=rhsphik4(i,j,k) - (sharpxp-sharpxm)*dxi - (sharpyp-sharpym)*dyi - (sharpzp-sharpzm)/dz
-            enddo
-         enddo
-      enddo
-      !$acc end kernels     
-
-      ! Update phi with RK4
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               phi(i,j,k) = phi(i,j,k) + dt/6.0d0*(rhsphi(i,j,k) + 2.0d0*rhsphik2(i,j,k) + &
-                            2.0d0*rhsphik3(i,j,k) + rhsphik4(i,j,k))
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-      ! 4.3 Call halo exchanges along Y and Z for phi 
-      !$acc host_data use_device(phi)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data 
-   #endif
+   enddo
+   !$acc end data
+   ! (uncomment for profiling)
+   ! call nvtxEndRange
+    #endif
    !########################################################################################################################################
    ! END STEP 4: PHASE-FIELD SOLVER 
    !########################################################################################################################################
