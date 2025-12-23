@@ -67,7 +67,7 @@ module phase
    double precision, allocatable :: phi(:,:,:), psidi(:,:,:)
    double precision, allocatable :: phi_eval(:,:,:), phi_old(:,:,:), phi_tmp(:,:,:),k_stage(:,:,:)
    double precision, allocatable :: normx(:,:,:), normy(:,:,:), normz(:,:,:)
-   double precision, allocatable :: ax(:,:,:), ay(:,:,:), az(:,:,:)
+   !double precision, allocatable :: ax(:,:,:), ay(:,:,:), az(:,:,:)
    double precision, allocatable :: cx(:,:,:), cy(:,:,:), cz(:,:,:)
    double precision :: curv, psidimx, psidimy, psidimz
    double precision, allocatable :: fxst(:,:,:), fyst(:,:,:), fzst(:,:,:)
