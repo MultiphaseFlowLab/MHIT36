@@ -460,7 +460,7 @@ do t=tstart,tfin
          do j=1, piX%shape(2)
             do i=1,nx
                ! compute distance function psi (used to compute normals)
-               val = min(phi_eval(i,j,k),1.0d0) 
+               val = max(0.0d0, min(phi_eval(i,j,k), 1.0d0))
                psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
             enddo
          enddo

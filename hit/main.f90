@@ -365,6 +365,13 @@ CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDE
 CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
 !$acc end host_data 
 
+! find local maximum velocity (for ACDI)
+uc=maxval(u)
+vc=maxval(v)
+wc=maxval(w)
+umax=max(wc,max(uc,vc))
+call MPI_Allreduce(umax,gumax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
+
 ! initialize phase-field
 #if phiflag == 1
    if (restart .eq. 0) then
@@ -441,7 +448,6 @@ endif
 ! First step use Euler
 alpha=1.0d0
 beta=0.0d0
-gumax=1.d0
 tstart=tstart+1
 gamma=1.d0*gumax
 !$acc data copyin(piX)
@@ -460,10 +466,8 @@ do t=tstart,tfin
     write(itcount,'(i4)') t
    ! Range with custom  color (uncomment for profiling)
    ! call nvtxStartRange("Iteration "//itcount,t)
-
     if (rank.eq.0) write(*,*) "Time step",t,"of",tfin
     call cpu_time(times)
-
 
    !########################################################################################################################################
    ! START STEP 4: PARTICLES (TRACERS)
@@ -513,10 +517,6 @@ do t=tstart,tfin
    !########################################################################################################################################
    ! END STEP 4: PARTICLES
    !########################################################################################################################################
-
-
-
-
 
    
    ! (uncomment for profiling)
@@ -587,7 +587,7 @@ do t=tstart,tfin
          do j=1, piX%shape(2)
             do i=1,nx
                ! compute distance function psi (used to compute normals)
-               val = min(phi_eval(i,j,k),1.0d0) 
+               val = max(0.0d0, min(phi_eval(i,j,k), 1.0d0))
                psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
             enddo
          enddo
