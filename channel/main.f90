@@ -186,13 +186,11 @@ allocate(div(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(a(0:nz+1),b(0:nz+1),c(0:nz+1),d(0:nz+1),sol(0:nz+1))
 !PFM variables
 #if phiflag == 1
-allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphi(piX%shape(1),piX%shape(2),piX%shape(3)))
-allocate(psidi(piX%shape(1),piX%shape(2),piX%shape(3)))
-allocate(tanh_psi(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),k_stage(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(phi_tmp(piX%shape(1),piX%shape(2),piX%shape(3)),phi_eval(piX%shape(1),piX%shape(2),piX%shape(3)),phi_old(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(cx(piX%shape(1),piX%shape(2),piX%shape(3)),cy(piX%shape(1),piX%shape(2),piX%shape(3)),cz(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(normx(piX%shape(1),piX%shape(2),piX%shape(3)),normy(piX%shape(1),piX%shape(2),piX%shape(3)),normz(piX%shape(1),piX%shape(2),piX%shape(3)))
-allocate(normx_f(piX%shape(1),piX%shape(2),piX%shape(3)),normy_f(piX%shape(1),piX%shape(2),piX%shape(3)),normz_f(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(fxst(piX%shape(1),piX%shape(2),piX%shape(3)),fyst(piX%shape(1),piX%shape(2),piX%shape(3)),fzst(piX%shape(1),piX%shape(2),piX%shape(3))) ! surface tension forces
-allocate(phi_tmp(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik2(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik3(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphik4(piX%shape(1),piX%shape(2),piX%shape(3)))
 #endif
 !Temperature variables
 #if thetaflag == 1
@@ -1073,11 +1071,11 @@ if (rank .eq. 0) write(*,*)  'Elapsed time (seconds):', elapsed
 
 ! Remove allocated variables (add new)
 deallocate(u,v,w)
-deallocate(tanh_psi, mysin, mycos)
-deallocate(rhsu,rhsv,rhsw)
-deallocate(rhsu_o,rhsv_o,rhsw_o)
+!deallocate(tanh_psi, mysin, mycos)
+!deallocate(rhsu,rhsv,rhsw)
+!deallocate(rhsu_o,rhsv_o,rhsw_o)
 #if phiflag == 1
-deallocate(phi,rhsphi,normx,normy,normz)
+!deallocate(phi,rhsphi,normx,normy,normz)
 #endif
 #if thetaflag == 1
 deallocate(theta,rhstheta,rhstheta_o)
