@@ -54,7 +54,7 @@ double precision, parameter :: beta(3)  = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12
 !real(kind=8), parameter :: beta(3)   = (/ 0.0d0, -0.122243120495896d0, -0.377756879504104d0 /)
 
 ! Enable or disable phase field 
-#define phiflag 1
+#define phiflag 0
 ! Enable or disable temperature field
 #define thetaflag 0
 
@@ -1013,7 +1013,7 @@ do t=tstart,tfin
           enddo
       enddo
    enddo
-   write(*,*) "Max divergence after correction ", maxdiv
+   !write(*,*) "Max divergence after correction ", maxdiv
 
    call MPI_Allreduce(umax,gumax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
    call MPI_Allreduce(vmax,gvmax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
