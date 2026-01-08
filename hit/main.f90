@@ -687,7 +687,53 @@ do t=tstart,tfin
       enddo
    enddo
    !$acc end data
-   ! (uncomment for profiling)
+
+   ! recompute normals from phi n+1 for surface tension force computation
+   !$acc kernels
+   do k=1, piX%shape(3)
+      do j=1, piX%shape(2)
+         do i=1,nx
+            ! compute distance function psi (used to compute normals)
+            val = max(0.0d0, min(phi_eval(i,j,k), 1.0d0))
+            psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
+         enddo
+      enddo
+   enddo
+
+   ! 2. Compute normals 
+   do k=1+halo_ext, piX%shape(3)-halo_ext
+      do j=1+halo_ext, piX%shape(2)-halo_ext
+         do i=1,nx
+            ip=i+1
+            jp=j+1
+            kp=k+1
+            im=i-1
+            jm=j-1
+            km=k-1
+            if (ip .gt. nx) ip=1
+            if (im .lt. 1) im=nx
+            normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
+            normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dxi
+            normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))*dxi
+            normag = 1.d0/(sqrt(normx(i,j,k)*normx(i,j,k) + normy(i,j,k)*normy(i,j,k) + normz(i,j,k)*normz(i,j,k)) + enum)
+            normx(i,j,k) = normx(i,j,k)*normag
+            normy(i,j,k) = normy(i,j,k)*normag
+            normz(i,j,k) = normz(i,j,k)*normag
+         enddo
+      enddo
+   enddo
+   !$acc end kernels
+
+   ! Update convective halos + normales halos, required to then compute normal derivative
+   !$acc host_data use_device(normx,normy,normz)
+   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+   !$acc end host_data
+
    ! call nvtxEndRange
     #endif
    !########################################################################################################################################
@@ -764,7 +810,7 @@ do t=tstart,tfin
             jg = piX%lo(2) + j - 1
             ! ABC forcing
             rhsu(i,j,k)= rhsu(i,j,k) + f3*mysin(kg)+f2*mycos(jg)
-            rhsv(i,j,k)= rhsv(i,j,k) + f1*mysin(i)+f3*mycos(kg)
+            rhsv(i,j,k)= rhsv(i,j,k) + f1*mysin(i) +f3*mycos(kg)
             rhsw(i,j,k)= rhsw(i,j,k) + f2*mysin(jg)+f1*mycos(i)
          enddo
       enddo
