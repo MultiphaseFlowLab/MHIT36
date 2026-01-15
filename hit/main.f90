@@ -588,8 +588,11 @@ do t=tstart,tfin
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
+               im=i-1
                ip=i+1 
-               jp=j+1 
+               jm=j-1
+               jp=j+1
+               km=k-1 
                kp=k+1
                if (ip .gt. nx) ip=1
                ! Advection fluxes
@@ -616,13 +619,10 @@ do t=tstart,tfin
                fzp = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,j,kp)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normz(i,j,kp)+normz(i,j,k))
                fzm = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,j,km)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normz(i,j,km)+normz(i,j,k))
                rhsphi(i,j,k) = rhsphi(i,j,k) - (fxp - fxm)*dxi  - (fyp - fym)*dxi - (fzp - fzm)*dxi
-
             enddo
          enddo
       enddo
-      !$acc end kernels
 
-      !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
