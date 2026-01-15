@@ -1,7 +1,7 @@
 0           ! fresh start=0 restart =1
 0           ! iteration to start from (fresh start 0 otherwise different)
-10000           ! Final time step
-100000           ! Saving frequency
+1000           ! Final time step
+100           ! Saving frequency
 0           ! inflow condition (0=Taylor green, 1=read from fields)
 0           ! phase-field initial condition (0=circular drop, 1=read from fields)
 0.0002      ! dt for the simulation
@@ -12,7 +12,7 @@
 1.0         ! C forcing parameter (ABC forcing)
 2.0         ! Forced wavenumber (ABC forcing)
 0.5         ! Initial drop radius for phase-field
-1.0d0       ! Surface tension
-1.0         ! Ratio eps/dx
+0.45d0       ! Surface tension
+0.51         ! Ratio eps/dx
 10000       ! Number particles            
 1           ! Particle initial condition (0 from file, 1 random, 2 random in drops)
