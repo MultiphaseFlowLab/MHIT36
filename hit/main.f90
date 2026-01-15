@@ -595,6 +595,7 @@ do t=tstart,tfin
                km=k-1 
                kp=k+1
                if (ip .gt. nx) ip=1
+               if (im .lt. 1)  im=nx
                ! Advection fluxes
                fxp = u(ip,j,k)*0.5d0*(phi(ip,j,k) + phi(i,j,k))
                fxm =  u(i,j,k)*0.5d0*(phi(im,j,k) + phi(i,j,k))
