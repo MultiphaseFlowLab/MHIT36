@@ -30,7 +30,6 @@ double precision, parameter :: rk4b(5) = [ &
     3134564353537.d0 / 4481467310338.d0, &
     2277821191437.d0 / 14882151754819.d0 ]
 end module param
-end module param
 
 
 module mpivar
