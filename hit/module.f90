@@ -69,8 +69,9 @@ module phase
    double precision, allocatable :: normx(:,:,:), normy(:,:,:), normz(:,:,:)
    !double precision, allocatable :: ax(:,:,:), ay(:,:,:), az(:,:,:)
    double precision, allocatable :: cx(:,:,:), cy(:,:,:), cz(:,:,:)
-   double precision :: curv, psidimx, psidimy, psidimz
+   double precision :: curv
    double precision :: psidp, psidm, psidc
+   double precision :: fxp, fxm, fyp, fym, fzp, fzm
    double precision, allocatable :: fxst(:,:,:), fyst(:,:,:), fzst(:,:,:)
 end module phase
 

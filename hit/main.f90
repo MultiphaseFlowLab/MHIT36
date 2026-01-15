@@ -21,7 +21,6 @@ real :: t_start, t_end, elapsed
 integer :: comm_backend
 integer :: pr, pc
 ! cudecomp
-! cuFFT
 integer :: planXf, planXb
 integer :: planY, planZ
 integer :: batchsize
@@ -37,7 +36,6 @@ real(8), device, allocatable :: kx_d(:)
 complex(8), allocatable :: psi(:)
 real(8), allocatable :: ua(:,:,:)
 real(8), allocatable :: uaa(:,:,:)
-
 real(8), allocatable :: psi_real(:)
 ! real(8), device, allocatable :: psi_real_d(:)
 complex(8), device, allocatable :: psi_d(:)
@@ -45,15 +43,14 @@ complex(8), pointer, device, contiguous :: work_d(:), work_halo_d(:), work_d_d2z
 character(len=40) :: namefile
 character(len=4) :: itcount
 ! Code variables
-
 real(8)::err,maxErr
-
 complex(8), device, pointer :: phi3d(:,:,:)
 real(8) :: k2
 !integer :: il, jl, ig, jg
 integer :: offsets(3), xoff, yoff
 integer :: np(3)
-
+double precision, parameter :: rk4a(5) = (0.d0,-567301805773.d0/1357537059087.d0,-2404267990393.d0/2016746695238.d0,-3550918686646.d0/2091501179385.d0,-1275806237668.d0/842570457699.d0)
+double precision, parameter :: rk4b(5) = (1432997174477.d0/9575080441755.d0,5161836677717.d0/13612068292357.d0,1720146321549.d0/2090206949498.d0,3134564353537.d0/4481467310338.d0, 2277821191437.d0/14882151754819.d0)
 ! Enable or disable phase field (acceleration eneabled by default)
 #define phiflag 1
 ! Enable or disable particle Lagrangian tracking (tracers)
@@ -285,8 +282,7 @@ allocate(rhsu_o(piX%shape(1),piX%shape(2),piX%shape(3)),rhsv_o(piX%shape(1),piX%
 allocate(div(piX%shape(1),piX%shape(2),piX%shape(3)))
 !PFM variables
 #if phiflag == 1
-allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),k_stage(piX%shape(1),piX%shape(2),piX%shape(3)))
-allocate(phi_tmp(piX%shape(1),piX%shape(2),piX%shape(3)),phi_eval(piX%shape(1),piX%shape(2),piX%shape(3)),phi_old(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),q_phi(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(cx(piX%shape(1),piX%shape(2),piX%shape(3)),cy(piX%shape(1),piX%shape(2),piX%shape(3)),cz(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(psidi(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(normx(piX%shape(1),piX%shape(2),piX%shape(3)),normy(piX%shape(1),piX%shape(2),piX%shape(3)),normz(piX%shape(1),piX%shape(2),piX%shape(3)))
@@ -525,92 +521,52 @@ do t=tstart,tfin
    !########################################################################################################################################
     #if phiflag == 1
    ! 4.2 Get phi at n+1 using RK4 + skew-symmetric splitting
-
-   !$acc data present(phi,phi_old,phi_tmp,phi_eval,k_stage,psidi,cx,cy,cz,normx,normy,normz,u,v,w)
    gamma=1.d0*gumax
-   ! Reset accumulator for the new time step
+   ! Low-storage auxiliary register
    !$acc parallel loop collapse(3)
    do k=1+halo_ext, piX%shape(3)-halo_ext
       do j=1+halo_ext, piX%shape(2)-halo_ext
          do i=1,nx
-            phi_old(i,j,k) = phi(i,j,k)
-            phi_tmp(i,j,k) = 0.d0
+            q_phi(i,j,k) = 0.d0
          enddo
       enddo
    enddo
-   
-   ! RK4 Stages
-   do stage = 1, 4
-      select case(stage)
-      case(1)
-         !$acc parallel loop collapse(3)
-         do k=1+halo_ext, piX%shape(3)-halo_ext
-            do j=1+halo_ext, piX%shape(2)-halo_ext
-               do i=1,nx
-                  phi_eval(i,j,k) = phi_old(i,j,k)
-               enddo
-            enddo
-         enddo
-         weight = 1.d0/6.d0
 
-         case(2,3)
-         !$acc parallel loop collapse(3)
-         do k=1+halo_ext, piX%shape(3)-halo_ext
-            do j=1+halo_ext, piX%shape(2)-halo_ext
-               do i=1,nx
-                  phi_eval(i,j,k) = phi_old(i,j,k) + 0.5d0*dt*k_stage(i,j,k)
-               enddo
-            enddo
-         enddo
-         weight = 2.d0/6.d0
-
-         case(4)
-         !$acc parallel loop collapse(3)
-         do k=1+halo_ext, piX%shape(3)-halo_ext
-            do j=1+halo_ext, piX%shape(2)-halo_ext
-               do i=1,nx
-                  phi_eval(i,j,k) = phi_old(i,j,k) + dt*k_stage(i,j,k)
-               enddo
-            enddo
-         enddo
-         weight = 1.d0/6.d0
-      end select
-
-      !$acc host_data use_device(phi_eval)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_eval, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi_eval, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+   ! Low storage RK4 - 2 registers - 5 stages - Carpenter-Kennedy 
+   do stage = 1, 5
+      !$acc host_data use_device(phi)
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data
 
+      ! Compute psidi from current phi, in both halo and non halo cells and then the normals
       !$acc kernels
       do k=1, piX%shape(3)
          do j=1, piX%shape(2)
             do i=1,nx
-               ! compute distance function psi (used to compute normals)
-               val = max(0.0d0, min(phi_eval(i,j,k), 1.0d0))
-               psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
+               val = max(0.d0, min(phi(i,j,k), 1.d0))
+            psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
             enddo
          enddo
       enddo
 
-      ! 2. Compute normals and convectiv fluxes
+      ! normal on interio nodes
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
-               ip=i+1
-               jp=j+1
-               kp=k+1
+               ip=i+1 
                im=i-1
+               jp=j+1 
                jm=j-1
+               kp=k+1 
                km=k-1
-               if (ip .gt. nx) ip=1
-               if (im .lt. 1) im=nx
-               cx(i,j,k) = -u(i,j,k)*0.5d0*(phi_eval(i,j,k) + phi_eval(im,j,k))
-               cy(i,j,k) = -v(i,j,k)*0.5d0*(phi_eval(i,j,k) + phi_eval(i,jm,k))
-               cz(i,j,k) = -w(i,j,k)*0.5d0*(phi_eval(i,j,k) + phi_eval(i,j,km))
+               if (ip > nx) ip=1
+               if (im < 1)  im=nx
+               ! Normals
                normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
                normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dxi
                normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))*dxi
-               normag = 1.d0/(sqrt(normx(i,j,k)*normx(i,j,k) + normy(i,j,k)*normy(i,j,k) + normz(i,j,k)*normz(i,j,k)) + enum)
+               normag = 1.d0 / (sqrt(normx(i,j,k)**2 + normy(i,j,k)**2 + normz(i,j,k)**2) + enum)
                normx(i,j,k) = normx(i,j,k)*normag
                normy(i,j,k) = normy(i,j,k)*normag
                normz(i,j,k) = normz(i,j,k)*normag
@@ -619,7 +575,7 @@ do t=tstart,tfin
       enddo
       !$acc end kernels
 
-      ! Update convective halos + normales halos, required to then compute normal derivative
+      ! Update normales halos, required to then compute normal derivative
       !$acc host_data use_device(normx,normy,normz)
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
@@ -629,53 +585,58 @@ do t=tstart,tfin
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data
 
+      ! Compute all the fluxes at the faces and add them to rhsphi
+      ! u,v,w are already updated from NS of init
+      ! skew-symmetric splitting for all contritbuions, all computed as a divergence
       !$acc kernels
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
-               im=i-1
-               jm=j-1
-               km=k-1
-               if (im .lt. 1) im=nx
-               cx(i,j,k) = cx(i,j,k) + gamma*eps*(phi_eval(i,j,k)-phi_eval(im,j,k))*dxi
-               cy(i,j,k) = cy(i,j,k) + gamma*eps*(phi_eval(i,j,k)-phi_eval(i,jm,k))*dxi
-               cz(i,j,k) = cz(i,j,k) + gamma*eps*(phi_eval(i,j,k)-phi_eval(i,j,km))*dxi         
-               psidimx = 0.5d0*(psidi(i,j,k)+psidi(im,j,k))
-               psidimy = 0.5d0*(psidi(i,j,k)+psidi(i,jm,k))
-               psidimz = 0.5d0*(psidi(i,j,k)+psidi(i,j,km))
-               cx(i,j,k) = cx(i,j,k) - 0.25*gamma*(1.d0-(dtanh(psidimx/(2.d0*eps)))**2)*0.5d0*(normx(i,j,k)+normx(im,j,k))
-               cy(i,j,k) = cy(i,j,k) - 0.25*gamma*(1.d0-(dtanh(psidimy/(2.d0*eps)))**2)*0.5d0*(normy(i,j,k)+normy(i,jm,k))
-               cz(i,j,k) = cz(i,j,k) - 0.25*gamma*(1.d0-(dtanh(psidimz/(2.d0*eps)))**2)*0.5d0*(normz(i,j,k)+normz(i,j,km))
-            enddo
-         enddo
-      enddo
-      !$acc end kernels
-
-      !$acc host_data use_device(cx,cy,cz)
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cx, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cy, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, cz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-      !$acc end host_data
-
-      !$acc kernels
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
-               ip=i+1
-               jp=j+1
+               ip=i+1 
+               jp=j+1 
                kp=k+1
                if (ip .gt. nx) ip=1
-               k_stage(i,j,k) = (cx(ip,j,k)-cx(i,j,k))*dxi + (cy(i,jp,k)-cy(i,j,k))*dxi + (cz(i,j,kp)-cz(i,j,k))*dxi 
-               phi_tmp(i,j,k) = phi_tmp(i,j,k) + weight*dt*k_stage(i,j,k)
-               phi(i,j,k)=phi_old(i,j,k) + phi_tmp(i,j,k)
+               ! Advection fluxes
+               fxp = u(ip,j,k)*0.5d0*(phi(ip,j,k) + phi(i,j,k))
+               fxm =  u(i,j,k)*0.5d0*(phi(im,j,k) + phi(i,j,k))
+               fyp = v(i,jp,k)*0.5d0*(phi(i,jp,k) + phi(i,j,k))
+               fym =  v(i,j,k)*0.5d0*(phi(i,jm,k) + phi(i,j,k))
+               fzp = w(i,j,kp)*0.5d0*(phi(i,j,kp) + phi(i,j,k))
+               fzm =  w(i,j,k)*0.5d0*(phi(i,j,km) + phi(i,j,k))
+               rhsphi(i,j,k) = - (fxp - fxm)*dxi  - (fyp - fym)*dxi - (fzp - fzm)*dxi
+               ! Diffusion fluxes
+               fxp = gamma*eps*(phi(ip,j,k)-phi(i,j,k))*dxi
+               fxm = gamma*eps*(phi(i,j,k)-phi(im,j,k))*dxi
+               fyp = gamma*eps*(phi(i,jp,k)-phi(i,j,k))*dxi
+               fym = gamma*eps*(phi(i,j,k)-phi(i,jm,k))*dxi
+               fzp = gamma*eps*(phi(i,j,kp)-phi(i,j,k))*dxi
+               fzm = gamma*eps*(phi(i,j,k)-phi(i,j,km))*dxi
+               rhsphi(i,j,k) = rhsphi(i,j,k) + (fxp - fxm)*dxi  + (fyp - fym)*dxi + (fzp - fzm)*dxi
+               ! Sharpening fluxes
+               fxp = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(ip,j,k)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normx(ip,j,k)+normx(i,j,k))
+               fxm = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(im,j,k)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normx(im,j,k)+normx(i,j,k))
+               fyp = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,jp,k)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normy(i,jp,k)+normy(i,j,k))
+               fym = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,jm,k)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normy(i,jm,k)+normy(i,j,k))
+               fzp = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,j,kp)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normz(i,j,kp)+normz(i,j,k))
+               fzm = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,j,km)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normz(i,j,km)+normz(i,j,k))
+               rhsphi(i,j,k) = rhsphi(i,j,k) - (fxp - fxm)*dxi  - (fyp - fym)*dxi - (fzp - fzm)*dxi
+
             enddo
          enddo
       enddo
       !$acc end kernels
-    enddo ! end RK4 stages
+
+      !$acc kernels
+      do k=1+halo_ext, piX%shape(3)-halo_ext
+         do j=1+halo_ext, piX%shape(2)-halo_ext
+            do i=1,nx
+               q_phi(i,j,k) = rk4a(stage)*q_phi(i,j,k) + dt*rhsphi(i,j,k)
+               phi(i,j,k)   = phi(i,j,k) + rk4b(stage)*q_phi(i,j,k)
+            enddo
+         enddo
+      enddo
+      !$acc end kernels
+   enddo  ! end RK4 stages
 
    ! clip phi between 0 and 1
    !$acc parallel loop collapse(3)
