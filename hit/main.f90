@@ -541,7 +541,7 @@ do t=tstart,tfin
          do j=1, piX%shape(2)
             do i=1,nx
                val = max(0.d0, min(phi(i,j,k), 1.d0))
-            psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
+               psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
             enddo
          enddo
       enddo
@@ -562,7 +562,7 @@ do t=tstart,tfin
                normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
                normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dxi
                normz(i,j,k) = 0.5d0*(psidi(i,j,kp) - psidi(i,j,km))*dxi
-               normag = 1.d0 / (sqrt(normx(i,j,k)**2 + normy(i,j,k)**2 + normz(i,j,k)**2) + enum)
+               normag = 1.d0/(sqrt(normx(i,j,k)**2 + normy(i,j,k)**2 + normz(i,j,k)**2) + enum)
                normx(i,j,k) = normx(i,j,k)*normag
                normy(i,j,k) = normy(i,j,k)*normag
                normz(i,j,k) = normz(i,j,k)*normag
@@ -584,7 +584,7 @@ do t=tstart,tfin
       ! Compute all the fluxes at the faces and add them to rhsphi
       ! u,v,w are already updated from NS of init
       ! skew-symmetric splitting for all contritbuions, all computed as a divergence
-      !$acc kernels
+      !$acc parallel loop collapse(3) default(present)
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
@@ -613,26 +613,28 @@ do t=tstart,tfin
                fzm = gamma*eps*(phi(i,j,k)-phi(i,j,km))*dxi
                rhsphi(i,j,k) = rhsphi(i,j,k) + (fxp - fxm)*dxi  + (fyp - fym)*dxi + (fzp - fzm)*dxi
                ! Sharpening fluxes
-               fxp = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(ip,j,k)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normx(ip,j,k)+normx(i,j,k))
-               fxm = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(im,j,k)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normx(im,j,k)+normx(i,j,k))
-               fyp = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,jp,k)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normy(i,jp,k)+normy(i,j,k))
-               fym = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,jm,k)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normy(i,jm,k)+normy(i,j,k))
-               fzp = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,j,kp)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normz(i,j,kp)+normz(i,j,k))
-               fzm = 0.25d0*gamma*(1.d0-(dtanh((0.5d0*(psidi(i,j,km)+psidi(i,j,k)))/(2.d0*eps)))**2)*0.5d0*(normz(i,j,km)+normz(i,j,k))
+               fxp = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normx(ip,j,k)+normx(i,j,k))
+               fxm = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(im,j,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normx(im,j,k)+normx(i,j,k))
+               fyp = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(i,jp,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normy(i,jp,k)+normy(i,j,k))
+               fym = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(i,jm,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normy(i,jm,k)+normy(i,j,k))
+               fzp = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2)*0.5d0*(normz(i,j,kp)+normz(i,j,k))
+               fzm = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(i,j,km)+psidi(i,j,k))*epsi))**2)*0.5d0*(normz(i,j,km)+normz(i,j,k))
                rhsphi(i,j,k) = rhsphi(i,j,k) - (fxp - fxm)*dxi  - (fyp - fym)*dxi - (fzp - fzm)*dxi
-            enddo
-         enddo
-      enddo
-
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i=1,nx
                q_phi(i,j,k) = rk4a(stage)*q_phi(i,j,k) + dt*rhsphi(i,j,k)
                phi(i,j,k)   = phi(i,j,k) + rk4b(stage)*q_phi(i,j,k)
             enddo
          enddo
       enddo
-      !$acc end kernels
+
+      !do k=1+halo_ext, piX%shape(3)-halo_ext
+      !   do j=1+halo_ext, piX%shape(2)-halo_ext
+      !      do i=1,nx
+      !         q_phi(i,j,k) = rk4a(stage)*q_phi(i,j,k) + dt*rhsphi(i,j,k)
+      !         phi(i,j,k)   = phi(i,j,k) + rk4b(stage)*q_phi(i,j,k)
+      !      enddo
+      !   enddo
+      !enddo
+      !!$acc end kernels
    enddo  ! end RK4 stages
 
    ! clip phi between 0 and 1
