@@ -17,6 +17,19 @@ module param
     double precision :: gradpx, gradpy, noise, lflow, gflow, ubulk, cflx, cfly, cflz, gcflz
     double precision :: amp, mx, my, mz ! for perturbed flow
     double precision :: kappa ! temperature parameters: thermal diffusivity, Prandtl number
+    double precision, parameter :: rk4a(5) = [ &
+    0.d0, &
+    -567301805773.d0 / 1357537059087.d0, &
+    -2404267990393.d0 / 2016746695238.d0, &
+    -3550918686646.d0 / 2091501179385.d0, &
+    -1275806237668.d0 / 842570457699.d0 ]
+double precision, parameter :: rk4b(5) = [ &
+    1432997174477.d0 / 9575080441755.d0, &
+    5161836677717.d0 / 13612068292357.d0, &
+    1720146321549.d0 / 2090206949498.d0, &
+    3134564353537.d0 / 4481467310338.d0, &
+    2277821191437.d0 / 14882151754819.d0 ]
+end module param
 end module param
 
 
@@ -62,11 +75,9 @@ end module velocity
 
 
 module phase
-   double precision, allocatable :: phi(:,:,:), psidi(:,:,:)
-   double precision, allocatable :: phi_eval(:,:,:), phi_old(:,:,:), phi_tmp(:,:,:),k_stage(:,:,:)
+   double precision, allocatable :: phi(:,:,:), psidi(:,:,:), rhsphi(:,:,:), q_phi(:,:,:)
    double precision, allocatable :: normx(:,:,:), normy(:,:,:), normz(:,:,:)
-   double precision, allocatable :: cx(:,:,:), cy(:,:,:), cz(:,:,:)
-   double precision :: curv, psidimx, psidimy, psidimz
+   double precision :: curv
    double precision, allocatable :: fxst(:,:,:), fyst(:,:,:), fzst(:,:,:)
 end module phase
 
