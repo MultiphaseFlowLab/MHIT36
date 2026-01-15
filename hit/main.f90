@@ -49,8 +49,6 @@ real(8) :: k2
 !integer :: il, jl, ig, jg
 integer :: offsets(3), xoff, yoff
 integer :: np(3)
-double precision, parameter :: rk4a(5) = (0.d0,-567301805773.d0/1357537059087.d0,-2404267990393.d0/2016746695238.d0,-3550918686646.d0/2091501179385.d0,-1275806237668.d0/842570457699.d0)
-double precision, parameter :: rk4b(5) = (1432997174477.d0/9575080441755.d0,5161836677717.d0/13612068292357.d0,1720146321549.d0/2090206949498.d0,3134564353537.d0/4481467310338.d0, 2277821191437.d0/14882151754819.d0)
 ! Enable or disable phase field (acceleration eneabled by default)
 #define phiflag 1
 ! Enable or disable particle Lagrangian tracking (tracers)
@@ -282,9 +280,7 @@ allocate(rhsu_o(piX%shape(1),piX%shape(2),piX%shape(3)),rhsv_o(piX%shape(1),piX%
 allocate(div(piX%shape(1),piX%shape(2),piX%shape(3)))
 !PFM variables
 #if phiflag == 1
-allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),q_phi(piX%shape(1),piX%shape(2),piX%shape(3)))
-allocate(cx(piX%shape(1),piX%shape(2),piX%shape(3)),cy(piX%shape(1),piX%shape(2),piX%shape(3)),cz(piX%shape(1),piX%shape(2),piX%shape(3)))
-allocate(psidi(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),q_phi(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphi(piX%shape(1),piX%shape(2),piX%shape(3)),psidi(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(normx(piX%shape(1),piX%shape(2),piX%shape(3)),normy(piX%shape(1),piX%shape(2),piX%shape(3)),normz(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(fxst(piX%shape(1),piX%shape(2),piX%shape(3)),fyst(piX%shape(1),piX%shape(2),piX%shape(3)),fzst(piX%shape(1),piX%shape(2),piX%shape(3))) ! surface tension forces
 #endif
@@ -643,25 +639,14 @@ do t=tstart,tfin
    do k=1+halo_ext, piX%shape(3)-halo_ext
       do j=1+halo_ext, piX%shape(2)-halo_ext
          do i=1,nx
-            phi(i,j,k) = min(1.d0, max(0.d0, phi(i,j,k)))
-         enddo
-      enddo
-   enddo
-   !$acc end data
-
-   ! recompute normals from phi n+1 for surface tension force computation
-   !$acc kernels
-   do k=1, piX%shape(3)
-      do j=1, piX%shape(2)
-         do i=1,nx
-            ! compute distance function psi (used to compute normals)
-            val = max(0.0d0, min(phi_eval(i,j,k), 1.0d0))
+            val = max(0.0d0, min(phi(i,j,k), 1.0d0))
+            phi(i,j,k) = val
             psidi(i,j,k) = eps*log((val+enum)/(1.d0-val+enum))
          enddo
       enddo
    enddo
 
-   ! 2. Compute normals 
+   !$acc kernels
    do k=1+halo_ext, piX%shape(3)-halo_ext
       do j=1+halo_ext, piX%shape(2)-halo_ext
          do i=1,nx
