@@ -77,6 +77,7 @@ module phase
    double precision, allocatable :: phi(:,:,:), psidi(:,:,:), rhsphi(:,:,:), q_phi(:,:,:)
    double precision, allocatable :: normx(:,:,:), normy(:,:,:), normz(:,:,:)
    double precision :: curv
+   double precision :: fxp, fxm, fyp, fym, fzp, fzm
    double precision, allocatable :: fxst(:,:,:), fyst(:,:,:), fzst(:,:,:)
 end module phase
 
