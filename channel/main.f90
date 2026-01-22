@@ -494,7 +494,7 @@ do t=tstart,tfin
                fym = gamma*eps*(phi(i,j,k)-phi(i,jm,k))*dyi
                fzp = gamma*eps*(phi(i,j,kp)-phi(i,j,k))*dzi(kg+1)
                fzm = gamma*eps*(phi(i,j,k)-phi(i,j,km))*dzi(kg)
-               rhsphi(i,j,k) = - (fxp - fxm)*dxi  - (fyp - fym)*dyi - (fzp - fzm)*dzci(kg)
+               rhsphi(i,j,k) = + (fxp - fxm)*dxi  + (fyp - fym)*dyi + (fzp - fzm)*dzci(kg)
                ! Sharpening fluxes
                fxp = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normx(ip,j,k)+normx(i,j,k))
                fxm = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(im,j,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normx(im,j,k)+normx(i,j,k))
