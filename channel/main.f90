@@ -494,7 +494,7 @@ do t=tstart,tfin
                fym = gamma*eps*(phi(i,j,k)-phi(i,jm,k))*dyi
                fzp = gamma*eps*(phi(i,j,kp)-phi(i,j,k))*dzi(kg+1)
                fzm = gamma*eps*(phi(i,j,k)-phi(i,j,km))*dzi(kg)
-               rhsphi(i,j,k) = + (fxp - fxm)*dxi  + (fyp - fym)*dyi + (fzp - fzm)*dzci(kg)
+               rhsphi(i,j,k) = rhsphi(i,j,k) + (fxp - fxm)*dxi  + (fyp - fym)*dyi + (fzp - fzm)*dzci(kg)
                ! Sharpening fluxes
                fxp = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(ip,j,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normx(ip,j,k)+normx(i,j,k))
                fxm = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(im,j,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normx(im,j,k)+normx(i,j,k))
@@ -502,7 +502,7 @@ do t=tstart,tfin
                fym = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(i,jm,k)+psidi(i,j,k))*epsi))**2)*0.5d0*(normy(i,jm,k)+normy(i,j,k))
                fzp = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(i,j,kp)+psidi(i,j,k))*epsi))**2)*0.5d0*(normz(i,j,kp)+normz(i,j,k))
                fzm = 0.25d0*gamma*(1.d0-(dtanh(0.25d0*(psidi(i,j,km)+psidi(i,j,k))*epsi))**2)*0.5d0*(normz(i,j,km)+normz(i,j,k))
-               rhsphi(i,j,k) = - (fxp - fxm)*dxi  - (fyp - fym)*dyi - (fzp - fzm)*dzci(kg)
+               rhsphi(i,j,k) = rhsphi(i,j,k) - (fxp - fxm)*dxi  - (fyp - fym)*dyi - (fzp - fzm)*dzci(kg)
                q_phi(i,j,k) = rk4a(stage)*q_phi(i,j,k) + dt*rhsphi(i,j,k)
                phi(i,j,k)   = phi(i,j,k) + rk4b(stage)*q_phi(i,j,k)
                ! impose BCs at top and bottom (every RK stage as in NS)
