@@ -13,7 +13,7 @@ read(55,*) begin
 read(55,*) finish
 read(55,*) step
 
-rootpath='../../multi/output/'
+rootpath='../../channel/output/'
   
 close(1)
 

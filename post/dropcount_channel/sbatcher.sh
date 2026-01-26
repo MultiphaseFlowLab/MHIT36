@@ -11,4 +11,4 @@
 
 module load gcc
 
-srun ./DropCountSize.x
+srun ./dropcount

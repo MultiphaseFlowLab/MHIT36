@@ -2,7 +2,7 @@
 
 Code for DNS of turbulence in homogeneous isotropic turbulence.
 Solution of Navier-Stokes equations + phase-field method (ACDI).
-For time integration, a fully explicit scheme is used: Euler explicit for ACDI + AB2 for Navier-Stokes.
+For time integration, a fully explicit scheme is used: RK4 for ACDI + AB2 for Navier-Stokes.
 
 ## Check list of features implemented
 - Uniform grid along all three directions 

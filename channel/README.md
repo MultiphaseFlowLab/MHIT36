@@ -2,10 +2,10 @@
 
 Code for turbulent channel flow simulations (closed channel).
 Solution of Navier-Stokes equations + phase-field method (ACDI) + energy equation (passive scalar).
-For time integration, a fully explicit scheme is used: Euler explicit for ACDI + RK3 for Navier-Stokes and temperature
+For time integration, a fully explicit scheme is used: RK4 for ACDI + RK3 for Navier-Stokes and temperature
 
 ## Main features at a glance:
-- No-slip boundary conditions at the two walls ($z=\pm h$)
+- No-slip boundary conditions at the two walls ($z=\pm h$); BCs interpolated at the walls (standard approach for staggered)
 - Poisson solver based on FFT2 along $x$ and $y$ + TDMA along $z$.
 - Non-uniform grid along $z$, any stretching function can be used (defined in read_input.f90)
 - Domain of arbitary dimensions along all three directions
