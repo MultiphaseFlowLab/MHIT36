@@ -1,0 +1,6 @@
+512   ! nx
+256    ! ny
+384    ! nz
+00 ! start step
+800000 ! end step
+2000   ! dstep
