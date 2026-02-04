@@ -38,7 +38,7 @@ MOD	=
 
 
 OBJS	= $(FLWOBJS)
-EXEC    =  ./DropCountSize.x
+EXEC    =  ./dropcount
 
 $(EXEC):	$(OBJS)
 	$(LD) $(FFLAGS) $(OBJS)  -o $@

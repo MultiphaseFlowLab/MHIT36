@@ -33,7 +33,6 @@ subroutine get_interface(nstep)
       write(*,'(2x,a,i3,a)') 'New drop, ',drop_count,' drops'
       ! single drop part
       s_drop=0
-      s_drop(id,jd,kd)=1
       ! flood fill algorithm
       call flood_fill(top,s_drop,id,jd,kd)
       ! remove drops already done from top
