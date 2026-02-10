@@ -1,0 +1,4 @@
+512   ! nx
+0 ! start step
+200000 ! end step
+5000   ! dstep
