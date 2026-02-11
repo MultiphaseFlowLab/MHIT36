@@ -4,6 +4,11 @@ Multi-GPU code for intreface-resolved simulations of multiphase turbulence in ho
 The code relies on direct numerical simulation of Navier-Stokes equations coupled with a phase-field method (ACDI) for interface description.
 Tracking of Lagrangian particles (tracers) is also supported.
 The code parallerelization relies on the cuDecomp library.
+MHIT36 has been tested on the following machines:
+- Leonardo (CINECA)
+- Marenostrum-5 ACC (BSC)
+- VEGA (IZUM)
+- Alps (CSCS)
 
 
 ~~~text
