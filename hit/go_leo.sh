@@ -24,5 +24,5 @@ ROOT_DIR="$(dirname "$CURRENT_DIR")/cuDecomp/build/lib"
 echo "Using directory: $ROOT_DIR"
 export LD_LIBRARY_PATH=$ROOT_DIR:$LD_LIBRARY_PATH
 
-chmod 777 binder.sh
-mpirun -np 4 --map-by node:PE=8 --rank-by core  ./binder.sh ./mhit36
+chmod 777 binder_leo.sh
+mpirun -np 4 --map-by node:PE=8 --rank-by core  ./binder_leo.sh ./mhit36
