@@ -77,27 +77,31 @@ If you use this code, please cite the following works:
 
 ## Reference performance and scaling (hit configuration)
 Performance (NS only)
-* 128 x 128 x 128    |   1 x A100@Leonardo  |   1 ms/timestep 
-* 256 x 256 x 256    |   1 x A100@Leonardo  |   8 ms/timestep
-* 512 x 512 x 512    |   1 x A100@Leonardo  |  65 ms/timestep 
-* 128 x 128 x 128    |   4 x A100@Leonardo  |   1 ms/timestep
-* 256 x 256 x 256    |   4 x A100@Leonardo  |   3 ms/timestep
-* 512 x 512 x 512    |   4 x A100@Leonardo  |  18 ms/timestep 
-* 512 x 512 x 512    |   4 x H100@MN5-ACC   |  14 ms/timestep 
-* 1024 x 1024 x 1024 |   4 x A100@Leonardo  | 150 ms/timestep 
-* 2048 x 2048 x 2048 |  64 x A100@Leonardo  | 330 ms/timestep
-* 4096 x 4096 x 4096 | 256 x A100@Leonardo  | 780 ms/timestep
+* 128 x 128 x 128    |   1 x A100@Leonardo   |   1 ms/timestep 
+* 256 x 256 x 256    |   1 x A100@Leonardo   |   8 ms/timestep
+* 512 x 512 x 512    |   1 x A100@Leonardo   |  65 ms/timestep 
+* 128 x 128 x 128    |   4 x A100@Leonardo   |   1 ms/timestep
+* 256 x 256 x 256    |   4 x A100@Leonardo   |   3 ms/timestep
+* 512 x 512 x 512    |   4 x A100@Leonardo   |  18 ms/timestep 
+* 512 x 512 x 512    |   4 x H100@MN5-ACC    |  14 ms/timestep 
+* 512 x 512 x 512    |   4 x GH200@Alps-CSCS |   9 ms/timestep 
+* 1024 x 1024 x 1024 |   4 x A100@Leonardo   | 150 ms/timestep 
+* 1024 x 1024 x 1024 |   4 x GH200@Alps-CSCS |  72 ms/timestep 
+* 2048 x 2048 x 2048 |  64 x A100@Leonardo   | 330 ms/timestep
+* 4096 x 4096 x 4096 | 256 x A100@Leonardo   | 780 ms/timestep
 
 ## Reference performance and scaling (channel configuration)
 Performance (NS only)
-* 256 x 128 x 200    |   2 x RTX5000 16GB   |  31 ms/timestep 
-* 512 x 256 x 384    |   4 x A100 64 GB     |  15 ms/timestep
-* 1536 x 768 x 576   |   4 x A100 64 GB.    | 220 ms/timestep
-* 2048 x 768 x 576   |   4 x A100 64 GB     | 323 ms/timestep
-* 2048 x 768 x 576   |  16 x A100 64 GB     | 127 ms/timestep
-* 3456 x 1296 x 960  |  16 x A100 64 GB     | 720 ms/timestep
+* 256 x 128 x 200    |   2 x RTX5000@Milton   |  31 ms/timestep 
+* 512 x 256 x 384    |   4 x A100@Leonardo    |  15 ms/timestep
+* 1536 x 768 x 576   |   4 x A100@Leonardo    | 220 ms/timestep
+* 1536 x 768 x 576   |   4 x GH200@Alps-CSCS  | 130 ms/timestep
+* 2048 x 768 x 576   |   4 x A100@Leonardo    | 323 ms/timestep
+* 2048 x 768 x 576   |   4 x GH200@Alps-CSCS  | 178 ms/timestep
+* 2048 x 768 x 576   |  16 x A100@Leonardo    | 127 ms/timestep
+* 3456 x 1296 x 960  |  16 x A100@Leonardo    | 720 ms/timestep
 
-- Phase-field introduces about 20% of overhead compared to NS only
+- Phase-field introduces about 50% of overhead compared to NS only (RK4-ACDI)
 - Max resolution tested: 4096^3
 - Max number of GPUs used: 512 (Leonardo) and 1024 (MN5)
 
