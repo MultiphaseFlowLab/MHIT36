@@ -1,4 +1,4 @@
-# Homogeneous isotropic turbulence box configuratuion
+# Homogeneous isotropic turbulence box configuration
 
 Code for DNS of turbulence in homogeneous isotropic turbulence.
 Solution of Navier-Stokes equations + phase-field method (ACDI).
