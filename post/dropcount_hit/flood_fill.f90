@@ -1,67 +1,56 @@
-subroutine flood_fill(top, s_drop, id, jd, kd)
-  use param, only: nx
+! Iterative 26-connected flood fill using an explicit DFS stack.
+! Flat index encoding: flat = (k-1)*nx*nx + (j-1)*nx + (i-1), range [0, nx^3-1].
+! stack workspace (size >= nx*nx*nx) is allocated once by the caller and reused.
+subroutine flood_fill_iter(top, label, stack, current_label, i0, j0, k0, cluster_size)
+  use param
   implicit none
   integer, intent(in)    :: top(nx,nx,nx)
-  integer, intent(inout) :: s_drop(nx,nx,nx)
-  integer, intent(in)    :: id, jd, kd
-  integer :: stack_i(nx*nx*nx), stack_j(nx*nx*nx), stack_k(nx*nx*nx)
-  integer :: topi, topj, topk
-  integer :: ni, nj, nk
-  integer :: sp
+  integer, intent(inout) :: label(nx,nx,nx)
+  integer, intent(inout) :: stack(*)
+  integer, intent(in)    :: current_label, i0, j0, k0
+  integer, intent(out)   :: cluster_size
 
-  integer :: dx, dy, dz
-  integer :: manh
+  integer :: sp, flat, i, j, k, ni, nj, nk, d
 
-  ! quick rejects
-  if (id < 1 .or. id > nx) return
-  if (jd < 1 .or. jd > nx) return
-  if (kd < 1 .or. kd > nx) return
-  if (top(id,jd,kd) /= 1) return
-  if (s_drop(id,jd,kd) /= 0) return
+  ! 26-connectivity offsets: 6 faces + 12 edges + 8 corners
+  integer, parameter :: ndirs = 26
+  integer :: ox(ndirs), oy(ndirs), oz(ndirs)
 
-  ! init explicit stack (DFS)
-  sp = 1
-  stack_i(sp) = id
-  stack_j(sp) = jd
-  stack_k(sp) = kd
-  s_drop(id,jd,kd) = 1
+  data ox / 1,-1, 0, 0, 0, 0,                    &  ! faces
+            1, 1,-1,-1, 1, 1,-1,-1, 0, 0, 0, 0,  &  ! edges
+            1, 1, 1, 1,-1,-1,-1,-1 /                 ! corners
+  data oy / 0, 0, 1,-1, 0, 0,                    &
+            1,-1, 1,-1, 0, 0, 0, 0, 1, 1,-1,-1,  &
+            1, 1,-1,-1, 1, 1,-1,-1 /
+  data oz / 0, 0, 0, 0, 1,-1,                    &
+            0, 0, 0, 0, 1,-1, 1,-1, 1,-1, 1,-1,  &
+            1,-1, 1,-1, 1,-1, 1,-1 /
+
+  label(i0,j0,k0) = current_label
+  sp           = 1
+  stack(1)     = (k0-1)*nx*nx + (j0-1)*nx + (i0-1)
+  cluster_size = 0
 
   do while (sp > 0)
+    flat = stack(sp)
+    sp   = sp - 1
+    cluster_size = cluster_size + 1
 
-    topi = stack_i(sp)
-    topj = stack_j(sp)
-    topk = stack_k(sp)
-    sp = sp - 1
+    ! decode flat (0-based) to 1-based indices
+    i = mod(flat,       nx) + 1
+    j = mod(flat/nx,    nx) + 1
+    k =     flat/(nx*nx)   + 1
 
-    ! 18-connectivity: |dx|+|dy|+|dz| = 1 or 2 (exclude corners where it is 3)
-    do dz = -1, 1
-      do dy = -1, 1
-        do dx = -1, 1
-
-          if (dx == 0 .and. dy == 0 .and. dz == 0) cycle
-
-          manh = abs(dx) + abs(dy) + abs(dz)
-          if (manh > 2) cycle
-
-          ! periodic in X, Y, Z (1-based indices)
-          ni = 1 + mod(topi - 1 + dx + nx, nx)
-          nj = 1 + mod(topj - 1 + dy + nx, nx)
-          nk = 1 + mod(topk - 1 + dz + nx, nx)
-
-          if (top(ni,nj,nk) == 1 .and. s_drop(ni,nj,nk) == 0) then
-            s_drop(ni,nj,nk) = 1
-            sp = sp + 1
-            if (sp > nx*nx*nx) stop "flood_fill: explicit stack overflow"
-            stack_i(sp) = ni
-            stack_j(sp) = nj
-            stack_k(sp) = nk
-          end if
-
-        end do
-      end do
+    do d = 1, ndirs
+      ni = mod(i - 1 + ox(d) + nx, nx) + 1
+      nj = mod(j - 1 + oy(d) + nx, nx) + 1
+      nk = mod(k - 1 + oz(d) + nx, nx) + 1
+      if (top(ni,nj,nk) == 1 .and. label(ni,nj,nk) == 0) then
+        label(ni,nj,nk) = current_label
+        sp       = sp + 1
+        stack(sp) = (nk-1)*nx*nx + (nj-1)*nx + (ni-1)
+      end if
     end do
-
   end do
 
-end subroutine flood_fill
-
+end subroutine flood_fill_iter

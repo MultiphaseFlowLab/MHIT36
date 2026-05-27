@@ -290,8 +290,8 @@ if (rank.eq.0) write(*,*) 'Initialize phase field (fresh start)'
       kg = piX%lo(3) + k - 1 - halo_ext
          do j = 1+halo_ext, piX%shape(2)-halo_ext
          jg = piX%lo(2) + j - 1 - halo_ext
-            do i = 1, piX%shape(1)
-                pos=(x(i)-lx/2)**2d0 +  (y(jg)-ly/2)**2d0 + (z(kg)-lz/2)**2d0
+           do i = 1, piX%shape(1)
+                pos=  (z(kg)-0.05d0)**2d0
                 phi(i,j,k) = 0.5d0*(1.d0-tanh((sqrt(pos)-radius)/2/eps))
             enddo
         enddo
@@ -416,6 +416,20 @@ do t=tstart,tfin
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data
 
+      ! Apply Neumann (zero-gradient) BC for phi at physical wall ghost cells.
+      ! The flux loop below covers only interior k, so kg never reaches 0 or nz+1
+      ! there — ghost cells must be set here, before psidi/normals are computed.
+      !$acc parallel loop collapse(3)
+      do k=1, piX%shape(3)
+         do j=1+halo_ext, piX%shape(2)-halo_ext
+            do i=1,nx
+               kg = piX%lo(3) + k - 1 - halo_ext
+               if (kg .eq. 0)    phi(i,j,k) = phi(i,j,k+1)
+               if (kg .eq. nz+1) phi(i,j,k) = phi(i,j,k-1)
+            enddo
+         enddo
+      enddo
+
       ! Compute psidi from current phi, in both halo and non halo cells and then the normals
       !$acc kernels
       do k=1, piX%shape(3)
@@ -463,6 +477,26 @@ do t=tstart,tfin
       CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
       !$acc end host_data
 
+      ! Neumann BC for normals at wall ghost cells (for correct sharpening flux near walls)
+      !$acc parallel loop collapse(3)
+      do k=1, piX%shape(3)
+         do j=1+halo_ext, piX%shape(2)-halo_ext
+            do i=1,nx
+               kg = piX%lo(3) + k - 1 - halo_ext
+               if (kg .eq. 0) then
+                  normx(i,j,k) = normx(i,j,k+1)
+                  normy(i,j,k) = normy(i,j,k+1)
+                  normz(i,j,k) = normz(i,j,k+1)
+               endif
+               if (kg .eq. nz+1) then
+                  normx(i,j,k) = normx(i,j,k-1)
+                  normy(i,j,k) = normy(i,j,k-1)
+                  normz(i,j,k) = normz(i,j,k-1)
+               endif
+            enddo
+         enddo
+      enddo
+
       ! Compute all the fluxes at the faces and add them to rhsphi
       ! u,v,w are already updated from NS of init
       ! skew-symmetric splitting for all contritbuions, all computed as a divergence
@@ -505,9 +539,6 @@ do t=tstart,tfin
                rhsphi(i,j,k) = rhsphi(i,j,k) - (fxp - fxm)*dxi  - (fyp - fym)*dyi - (fzp - fzm)*dzci(kg)
                q_phi(i,j,k) = rk4a(stage)*q_phi(i,j,k) + dt*rhsphi(i,j,k)
                phi(i,j,k)   = phi(i,j,k) + rk4b(stage)*q_phi(i,j,k)
-               ! impose BCs at top and bottom (every RK stage as in NS)
-               if (kg .eq. 0)      phi(i,j,k) = phi(i,j,k+1)  
-               if (kg .eq. nz+1)   phi(i,j,k) = phi(i,j,k-1)  
             enddo
          enddo
       enddo

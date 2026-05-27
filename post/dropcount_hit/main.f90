@@ -16,7 +16,7 @@ call print_start()
 allocate(phi(nx,nx,nx))
 
 ! create output file
-open(2,file='drop_count.dat',status='new',form='formatted')
+open(2,file='drop_count.dat',status='replace',form='formatted')
  write(2,'(3(a16,2x))') 'iteration','t^+','drop count'
 close(2,status='keep')
 

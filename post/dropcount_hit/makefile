@@ -3,8 +3,7 @@ LD	= $(FC)
 SWP	=
 RM	= /bin/rm -f
 MP	=
-# OLEVEL	= -O2
-OLEVEL	= -g -fbacktrace  -fbounds-check -Waliasing -Wunderflow -Wsurprising -fbacktrace -fcheck=all -Wall -fcheck=all
+OLEVEL	= -O3 -march=native
 FOPTS	= -mcmodel=medium -fconvert=big-endian  -ffixed-line-length-140 -fno-align-commons -fbounds-check -Wall -cpp  #-std=f2008ts -g
 
 FFLAGS	= $(FOPTS) $(OLEVEL)

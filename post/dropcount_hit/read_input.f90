@@ -3,7 +3,7 @@ subroutine read_input
  implicit none
  integer :: ios
 
- open(unit=1, file='../in_post.txt', status='old', action='read', iostat=ios)
+ open(unit=1, file='in_post.txt', status='old', action='read', iostat=ios)
  if (ios /= 0) then
      print *, 'Error opening file.'
      stop
