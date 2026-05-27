@@ -291,8 +291,8 @@ if (rank.eq.0) write(*,*) 'Initialize phase field (fresh start)'
          do j = 1+halo_ext, piX%shape(2)-halo_ext
          jg = piX%lo(2) + j - 1 - halo_ext
            do i = 1, piX%shape(1)
-                pos=  (z(kg)-0.05d0)**2d0
-                phi(i,j,k) = 0.5d0*(1.d0-tanh((sqrt(pos)-radius)/2/eps))
+               pos=(x(i)-lx/2)**2d0 +  (y(jg)-ly/2)**2d0 + (z(kg)-lz/2)**2d0
+               phi(i,j,k) = 0.5d0*(1.d0-tanh((sqrt(pos)-radius)/2/eps))
             enddo
         enddo
     enddo
@@ -417,8 +417,6 @@ do t=tstart,tfin
       !$acc end host_data
 
       ! Apply Neumann (zero-gradient) BC for phi at physical wall ghost cells.
-      ! The flux loop below covers only interior k, so kg never reaches 0 or nz+1
-      ! there — ghost cells must be set here, before psidi/normals are computed.
       !$acc parallel loop collapse(3)
       do k=1, piX%shape(3)
          do j=1+halo_ext, piX%shape(2)-halo_ext
