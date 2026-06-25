@@ -15,7 +15,7 @@ export $(CUDECOMP_DIR)/lib
 
 # Compiler and Linker Flags
 FFLAGS = -fast -acc -gpu=mem:managed -Mfree -Mpreprocess -cpp -cuda  -I$(CUDECOMP_DIR)/include/
-LIBS = -L$(CUDECOMP_DIR)/lib/ -L$(CUDA_DIR)/lib64/ -lcudecomp_fort -lcudecomp -cudalib=cufft  -lnvToolsExt
+LIBS = -L$(CUDECOMP_DIR)/lib/ -L$(CUDA_DIR)/lib64/ -lcudecomp_fort -lcudecomp -cudalib=cufft  -lnvhpcwrapnvtx
 
 # Source and Object Files
 OBJS = module.f90 particles.f90  main.f90 readinput.f90 readwrite.f90
