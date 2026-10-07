@@ -30,6 +30,10 @@ integer :: im,ip,jm,jp,km,kp,last,idx,kgm
 ! TDMA variables
 double precision, allocatable :: a(:), b(:), c(:)
 double complex, allocatable :: d(:), sol(:)
+! TDMA precomputed coefficients (time independent): a(k), c(k) and, per (kx,ky) column, 1/pivot, c'(k) and top-BC factor
+double precision, allocatable :: tdma_a(:), tdma_c(:), tdma_inv(:,:,:), tdma_cp(:,:,:), tdma_ftop(:,:)
+double precision :: lam, den, cpk, atop, btop
+double complex :: dpk
 ! working arrays
 double complex, allocatable :: psi(:)
 double precision, allocatable :: ua(:,:,:)
@@ -200,7 +204,50 @@ CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, work_d, nElemWork))
 CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, work_halo_d, nElemWork_halo))
 ! allocate arrays for transpositions
 CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_descD2Z, work_d_d2z, nElemWork_d2z))
-CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_descD2Z, work_halo_d_d2z, nElemWork_halo_d2z)) ! not required 
+CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_descD2Z, work_halo_d_d2z, nElemWork_halo_d2z)) ! not required
+
+! TDMA variables, inizialize the coefficients for the tridiagonal solver (a,b,c) and the right hand side (d)
+! TDMA: z-pencil sizes/offsets in the complex space (fixed for the whole run)
+np(piZ_d2z%order(1)) = piZ_d2z%shape(1)
+np(piZ_d2z%order(2)) = piZ_d2z%shape(2)
+np(piZ_d2z%order(3)) = piZ_d2z%shape(3)
+offsets(piZ_d2z%order(1)) = piZ_d2z%lo(1) - 1
+offsets(piZ_d2z%order(2)) = piZ_d2z%lo(2) - 1
+offsets(piZ_d2z%order(3)) = piZ_d2z%lo(3) - 1
+xoff = offsets(1)
+yoff = offsets(2)
+npx = np(1)
+npy = np(2)
+! TDMA: matrix does not change in time -> do the forward-elimination on the coefficients once here (on the CPU, done only once)
+! layout (il,jl,k) so that consecutive GPU threads (il) access consecutive memory in the solve
+allocate(tdma_a(nz), tdma_c(nz), tdma_inv(npx,npy,nz), tdma_cp(npx,npy,nz), tdma_ftop(npx,npy))
+do k = 1, nz
+   tdma_a(k) = 2.0d0*(dzi(k)**2.d0*dzi(k+1))/(dzi(k)+dzi(k+1))
+   tdma_c(k) = 2.0d0*(dzi(k)*dzi(k+1)**2.d0)/(dzi(k)+dzi(k+1))
+enddo
+do jl = 1, npy
+   do il = 1, npx
+      ig = xoff + il
+      jg = yoff + jl
+      lam = 2.d0*(cos(kx(ig)*dx)-1.d0)*dxi*dxi + 2.d0*(cos(ky(jg)*dy)-1.d0)*dyi*dyi
+      ! Neumann BC at bottom ghost (a=0, b=-1, c=1, d=0) -> c'(0) = -1, d'(0) = 0
+      cpk = -1.d0
+      do k = 1, nz
+         den = -tdma_a(k) - tdma_c(k) + lam - tdma_a(k)*cpk
+         tdma_inv(il,jl,k) = 1.d0/den
+         cpk = tdma_c(k)/den
+         tdma_cp(il,jl,k) = cpk
+      enddo
+      ! Neumann BC at top ghost (a=1, b=-1, c=0, d=0); pressure pinned for the (kx,ky)=(0,0) mode
+      atop =  1.d0
+      btop = -1.d0
+      if (ig == 1 .and. jg == 1) then
+         atop = 0.d0
+         btop = 1.d0
+      endif
+      tdma_ftop(il,jl) = atop/(btop - atop*cpk)
+   enddo
+enddo
 !########################################################################################################################################
 ! END STEP2: ALLOCATE ARRAYS
 !########################################################################################################################################
@@ -588,11 +635,11 @@ do t=tstart,tfin
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, normz, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
    !$acc end host_data
-   ! call nvtxEndRange
     #endif
    !########################################################################################################################################
-   ! END STEP 5: PHASE-FIELD SOLVER 
+   ! END STEP 5: PHASE-FIELD SOLVER
    !########################################################################################################################################
+   call nvtxEndRange
 
 
    !########################################################################################################################################
@@ -833,9 +880,8 @@ do t=tstart,tfin
 
 
    !########################################################################################################################################
-   ! END STEP 6: USTAR COMPUTATION 
+   ! END STEP 6: USTAR COMPUTATION
    !########################################################################################################################################
-   call nvtxEndRange
 
 
    call nvtxStartRange("Poisson")
@@ -879,65 +925,30 @@ do t=tstart,tfin
    CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX)) 
 
    call nvtxEndRange
-   np(piZ_d2z%order(1)) = piZ_d2z%shape(1)
-   np(piZ_d2z%order(2)) = piZ_d2z%shape(2)
-   np(piZ_d2z%order(3)) = piZ_d2z%shape(3)
    call c_f_pointer(c_devloc(psi_d), psi3d, piZ_d2z%shape)
-   offsets(piZ_d2z%order(1)) = piZ_d2z%lo(1) - 1
-   offsets(piZ_d2z%order(2)) = piZ_d2z%lo(2) - 1
-   offsets(piZ_d2z%order(3)) = piZ_d2z%lo(3) - 1
-
-   xoff = offsets(1)
-   yoff = offsets(2)
-   npx = np(1)
-   npy = np(2)
    call nvtxStartRange("Solution")
-   !$acc parallel loop collapse(2) gang private(a,b,c,d,factor) 
+   ! Thomas algorithm with precomputed coefficients (see STEP 2), one thread per (kx,ky) column, solved in place
+   !$acc parallel loop collapse(2) gang vector private(dpk)
    do jl = 1, npy
       do il = 1, npx
-         ! compute global index ig and jg
-         jg = yoff + jl
-         ig = xoff + il
-         ! Set up tridiagonal system for each i and j
-         ! Fill diagonals and rhs for each
-         ! 0 and nz+1 are the ghost nodes
+         ! Forward sweep: d'(k) = (d(k) - a(k)*d'(k-1)) / pivot(k), with d'(0) = 0 (bottom Neumann)
+         dpk = (0.d0,0.d0)
+         !$acc loop seq
          do k = 1, nz
-            a(k) =  2.0d0*(dzi(k)**2.d0*dzi(k+1))/(dzi(k)+dzi(k+1))
-            c(k) =  2.0d0*(dzi(k)*dzi(k+1)**2.d0)/(dzi(k)+dzi(k+1))
-            b(k) =  -a(k) - c(k) + 2.d0*(cos(kx_d(ig)*dx)-1.d0)*dxi*dxi + 2.d0*(cos(ky_d(jg)*dy)-1.d0)*dyi*dyi !opt: precompute cosines? 
-            d(k) =  psi3d(k,il,jl)
-         enddo
-         ! Neumann BC at bottom
-         a(0) =  0.d0
-         b(0) = -1.d0
-         c(0) =  1.d0  
-         d(0) =  0.d0
-         ! Neumann BC at top
-         a(nz+1) =  1.d0
-         b(nz+1) = -1.d0
-         c(nz+1) =  0.d0
-         d(nz+1) =  0.d0
-         ! Enforce pressure at one point? one interior point, avodig messing up with BC
-         if (ig == 1 .and. jg == 1) then
-            a(nz+1) = 0.d0
-            b(nz+1) = 1.d0
-            c(nz+1) = 0.d0
-         end if
-         ! Forward elimination (Thomas)
-         !$acc loop seq
-         do k = 1, nz+1
-            factor = a(k)/b(k-1)
-            b(k) = b(k) - factor*c(k-1)
-            d(k) = d(k) - factor*d(k-1)
+            dpk = (psi3d(k,il,jl) - tdma_a(k)*dpk)*tdma_inv(il,jl,k)
+            psi3d(k,il,jl) = dpk
          end do
-         ! Back substitution
-         psi3d(nz,il,jl) = (d(nz) - c(nz)*d(nz+1)/b(nz+1))/b(nz)
+         ! Top ghost node: x(nz+1) = (d(nz+1) - a(nz+1)*d'(nz))/pivot(nz+1), d(nz+1) = 0
+         dpk = -tdma_ftop(il,jl)*dpk
+         ! Back substitution: x(k) = d'(k) - c'(k)*x(k+1)
          !$acc loop seq
-         do k = nz-1, 1, -1
-            psi3d(k,il,jl) = (d(k) - c(k)*psi3d(k+1,il,jl))/b(k)
+         do k = nz, 1, -1
+            dpk = psi3d(k,il,jl) - tdma_cp(il,jl,k)*dpk
+            psi3d(k,il,jl) = dpk
          end do
       end do
    end do
+   call nvtxEndRange
 
    call nvtxStartRange("FFT backwards along x and y w/ transpositions")
    ! psi(z,kx,ky) -> psi(ky,z,kx)
@@ -966,10 +977,12 @@ do t=tstart,tfin
    !$acc host_data use_device(p)
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, p, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, p, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   !$acc end host_data 
+   !$acc end host_data
+   call nvtxEndRange
    !########################################################################################################################################
    ! END STEP 7: POISSON SOLVER FOR PRESSURE
    !########################################################################################################################################
+   call nvtxEndRange
 
 
    call nvtxStartRange("Correction")
@@ -1079,7 +1092,6 @@ do t=tstart,tfin
    !########################################################################################################################################
 
 call nvtxEndRange
-!call nvtxEndRange
 enddo
 call cpu_time(t_end)
 elapsed = t_end-t_start

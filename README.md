@@ -93,12 +93,12 @@ Performance (NS only)
 ## Reference performance and scaling (channel configuration)
 Performance (NS only)
 * 256 x 128 x 200    |   2 x RTX5000@Milton   |  31 ms/timestep 
-* 512 x 256 x 384    |   4 x A100@Leonardo    |  15 ms/timestep
+* 512 x 256 x 384    |   4 x A100@Leonardo    |  11 ms/timestep (new TDMA)
 * 1536 x 768 x 576   |   4 x A100@Leonardo    | 220 ms/timestep
 * 1536 x 768 x 576   |   4 x GH200@Alps-CSCS  | 130 ms/timestep
-* 2048 x 768 x 576   |   4 x A100@Leonardo    | 323 ms/timestep
+* 2048 x 768 x 576   |   4 x A100@Leonardo    | 203 ms/timestep (new TDMA)
 * 2048 x 768 x 576   |   4 x GH200@Alps-CSCS  | 178 ms/timestep
-* 2048 x 768 x 576   |  16 x A100@Leonardo    | 127 ms/timestep
+* 2048 x 768 x 576   |  16 x A100@Leonardo    | 127 ms/timestep 
 * 3456 x 1296 x 960  |  16 x A100@Leonardo    | 720 ms/timestep
 
 - Phase-field introduces about 50% of overhead compared to NS only (RK4-ACDI)
