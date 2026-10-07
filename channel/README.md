@@ -24,7 +24,7 @@ For time integration, a fully explicit scheme is used: RK4 for ACDI + RK3 for Na
 
 ![Test](../val/tcf2.png)
 
-## Validation (Re=180)
+## Validation (single-phase)
 - Turbulent channel flow at $Re_\tau=590$, Grid: $1536 \times 768 \times 576$ -> See SM of CPC paper 2026.
 - Turbulent channel flow at $Re_\tau=590$, Grid: $512 \times 256 \times 384$ -> See below
 
