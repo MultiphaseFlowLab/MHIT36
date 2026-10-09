@@ -47,6 +47,8 @@ character(len=4) :: itcount
 double precision ::err, maxErr, meanp, gmeanp
 double complex, device, pointer :: psi3d(:,:,:)
 double precision :: k2,maxdiv
+double precision :: dts ! RK3 sub-step time step, (alpha+beta)*dt, used by the projection
+double precision :: cnorm ! rho/dts and the 1/(nx*ny) FFT normalization, applied to the Poisson RHS
 !integer :: il, jl, ig, jg
 integer :: offsets(3), xoff, yoff
 integer :: np(3)
@@ -710,7 +712,6 @@ do t=tstart,tfin
 
 
 
-   call nvtxStartRange("Projection")
    !########################################################################################################################################
    ! START STEP 6: USTAR COMPUTATION (PROJECTION STEP)
    !########################################################################################################################################
@@ -720,6 +721,9 @@ do t=tstart,tfin
 
    ! Projection step
    do stage = 1,3
+      call nvtxStartRange("Projection")
+      ! sub-step time step: projection (Poisson RHS and correction) done at every RK3 stage
+      dts = (alpha(stage)+beta(stage))*dt
       !$acc parallel loop tile(16,4,2) 
       do k=1+halo_ext, piX%shape(3)-halo_ext
          do j=1+halo_ext, piX%shape(2)-halo_ext
@@ -860,11 +864,12 @@ do t=tstart,tfin
       !$acc end host_data 
 
       ! impose velocity boundary conditions, w is at the wall, u and v interpolate so that the mean value is zero, no-slip assumted, i.e. u=0, can be extented to any value
-      !$acc parallel loop collapse(3) 
+      ! j runs over the y-halos too (just updated above), so the corner ghosts are consistent
+      !$acc parallel loop collapse(3)
       do k=1, piX%shape(3)
-         do j=1+halo_ext, piX%shape(2)-halo_ext
+         do j=1, piX%shape(2)
             do i=1,nx
-               kg = piX%lo(3) + k - 1 -halo_ext 
+               kg = piX%lo(3) + k - 1 -halo_ext
                ! bottom wall 
                if (kg .eq. 0)     u(i,j,k)=  -u(i,j,k+1)  !  mean value between kg and kg-1 (wall) equal to zero  
                if (kg .eq. 0)     v(i,j,k)=  -v(i,j,k+1)  !  mean value between kg and kg-1 (wall) equal to zero  
@@ -876,177 +881,180 @@ do t=tstart,tfin
             enddo
          enddo
       enddo  
-
-   enddo
-   call nvtxEndRange
-
-
-   !########################################################################################################################################
-   ! END STEP 6: USTAR COMPUTATION
-   !########################################################################################################################################
+      call nvtxEndRange
+      !########################################################################################################################################
+      ! END STEP 6: USTAR COMPUTATION
+      !########################################################################################################################################
 
 
-   call nvtxStartRange("Poisson")
-   !########################################################################################################################################
-   ! START STEP 7: POISSON SOLVER FOR PRESSURE
-   !########################################################################################################################################
-   ! initialize rhs and analytical solution
-   ! 7.1 Compute rhs of Poisson equation div*ustar: divergence at the cell center 
-   ! I've done the halo updates so to compute the divergence at the pencil border i have the *star from the halo
-   call nvtxStartRange("compute RHS")
-   !$acc kernels
-   do k=1+halo_ext, piX%shape(3)-halo_ext
-      do j=1+halo_ext, piX%shape(2)-halo_ext
-         do i=1,nx
-            ip=i+1
-            jp=j+1
-            kp=k+1
-            kg = piX%lo(3)  + k - 1 - halo_ext
-            if (ip > nx) ip=1
-            rhsp(i,j,k) =                    (rho*dxi/dt)*(u(ip,j,k)-u(i,j,k))
-            rhsp(i,j,k) = rhsp(i,j,k) +      (rho*dyi/dt)*(v(i,jp,k)-v(i,j,k))
-            rhsp(i,j,k) = rhsp(i,j,k) + (rho*dzci(kg)/dt)*(w(i,j,kp)-w(i,j,k))
+      call nvtxStartRange("Poisson")
+      !########################################################################################################################################
+      ! START STEP 7: POISSON SOLVER FOR PRESSURE
+      !########################################################################################################################################
+      ! initialize rhs and analytical solution
+      ! 7.1 Compute rhs of Poisson equation div*ustar: divergence at the cell center 
+      ! I've done the halo updates so to compute the divergence at the pencil border i have the *star from the halo
+      ! the 1/(nx*ny) normalization of the unnormalized cuFFT forward+backward pair is applied here: the problem is
+      ! linear with homogeneous BCs (Neumann + pinned mode), so scaling the RHS scales p by the same factor
+      cnorm = rho/(dts*dble(nx)*dble(ny))
+      call nvtxStartRange("compute RHS")
+      !$acc kernels
+      do k=1+halo_ext, piX%shape(3)-halo_ext
+         do j=1+halo_ext, piX%shape(2)-halo_ext
+            do i=1,nx
+               ip=i+1
+               jp=j+1
+               kp=k+1
+               kg = piX%lo(3)  + k - 1 - halo_ext
+               if (ip > nx) ip=1
+               rhsp(i,j,k) = cnorm*( dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k)) )
+            enddo
          enddo
       enddo
-   enddo
-   !$acc end kernels
-   call nvtxEndRange
+      !$acc end kernels
+      call nvtxEndRange
 
+      call nvtxStartRange("FFT forward w/ transpositions")
+      !$acc host_data use_device(rhsp)
+      status = cufftExecD2Z(planXf, rhsp, psi_d)
+      if (status /= CUFFT_SUCCESS) write(*,*) 'X forward error: ', status
+      !$acc end host_data
+      ! psi(kx,y,z) -> psi(y,z,kx)
+      CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX,piX_d2z%halo_extents, [0,0,0]))
+      ! psi(y,z,kx) -> psi(ky,z,kx)
+      status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_FORWARD)
+      if (status /= CUFFT_SUCCESS) write(*,*) 'Y forward error: ', status
+      ! psi(ky,z,kx) -> psi(kx,ky,z)
+      CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX)) 
 
-   call nvtxStartRange("FFT forward w/ transpositions")
-   !$acc host_data use_device(rhsp)
-   status = cufftExecD2Z(planXf, rhsp, psi_d)
-   if (status /= CUFFT_SUCCESS) write(*,*) 'X forward error: ', status
-   !$acc end host_data
-   ! psi(kx,y,z) -> psi(y,z,kx)
-   CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX,piX_d2z%halo_extents, [0,0,0]))
-   ! psi(y,z,kx) -> psi(ky,z,kx)
-   status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_FORWARD)
-   if (status /= CUFFT_SUCCESS) write(*,*) 'Y forward error: ', status
-   ! psi(ky,z,kx) -> psi(kx,ky,z)
-   CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX)) 
-
-   call nvtxEndRange
-   call c_f_pointer(c_devloc(psi_d), psi3d, piZ_d2z%shape)
-   call nvtxStartRange("Solution")
-   ! Thomas algorithm with precomputed coefficients (see STEP 2), one thread per (kx,ky) column, solved in place
-   !$acc parallel loop collapse(2) gang vector private(dpk)
-   do jl = 1, npy
-      do il = 1, npx
-         ! Forward sweep: d'(k) = (d(k) - a(k)*d'(k-1)) / pivot(k), with d'(0) = 0 (bottom Neumann)
-         dpk = (0.d0,0.d0)
-         !$acc loop seq
-         do k = 1, nz
-            dpk = (psi3d(il,jl,k) - tdma_a(k)*dpk)*tdma_inv(il,jl,k)
-            psi3d(il,jl,k) = dpk
-         end do
-         ! Top ghost node: x(nz+1) = (d(nz+1) - a(nz+1)*d'(nz))/pivot(nz+1), d(nz+1) = 0
-         dpk = -tdma_ftop(il,jl)*dpk
-         ! Back substitution: x(k) = d'(k) - c'(k)*x(k+1)
-         !$acc loop seq
-         do k = nz, 1, -1
-            dpk = psi3d(il,jl,k) - tdma_cp(il,jl,k)*dpk
-            psi3d(il,jl,k) = dpk
-         end do
-      end do
-   end do
-   call nvtxEndRange
-
-   call nvtxStartRange("FFT backwards along x and y w/ transpositions")
-   ! psi(kx,ky,z) -> psi(ky,z,kx)
-   CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
-   ! psi(ky,z,kx) -> psi(y,z,kx)
-   status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_INVERSE)
-   if (status /= CUFFT_SUCCESS) write(*,*) 'Y inverse error: ', status
-   ! psi(y,z,kx) -> psi(kx,y,z)
-   CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX,[0,0,0], piX_d2z%halo_extents))
-   !$acc host_data use_device(p)
-   ! psi(kx,y,z) -> p(x,y,z)
-   status = cufftExecZ2D(planXb, psi_d, p)
-   if (status /= CUFFT_SUCCESS) write(*,*) 'X inverse error: ', status
-   !$acc end host_data
-
-   ! normalize pressure (must be done here, not in the TDMA)
-   !$acc parallel loop collapse(3)
-   do k=1+halo_ext, piX%shape(3)-halo_ext
-      do j=1+halo_ext, piX%shape(2)-halo_ext
-         do i=1,nx
-            p(i,j,k) = p(i,j,k)/dble(nx*ny)
+      call nvtxEndRange
+      call c_f_pointer(c_devloc(psi_d), psi3d, piZ_d2z%shape)
+      call nvtxStartRange("Solution")
+      ! Thomas algorithm with precomputed coefficients (see STEP 2), one thread per (kx,ky) column, solved in place
+      !$acc parallel loop collapse(2) gang vector private(dpk)
+      do jl = 1, npy
+         do il = 1, npx
+            ! Forward sweep: d'(k) = (d(k) - a(k)*d'(k-1)) / pivot(k), with d'(0) = 0 (bottom Neumann)
+            dpk = (0.d0,0.d0)
+            !$acc loop seq
+            do k = 1, nz
+               dpk = (psi3d(il,jl,k) - tdma_a(k)*dpk)*tdma_inv(il,jl,k)
+               psi3d(il,jl,k) = dpk
+            end do
+            ! Top ghost node: x(nz+1) = (d(nz+1) - a(nz+1)*d'(nz))/pivot(nz+1), d(nz+1) = 0
+            dpk = -tdma_ftop(il,jl)*dpk
+            ! Back substitution: x(k) = d'(k) - c'(k)*x(k+1)
+            !$acc loop seq
+            do k = nz, 1, -1
+               dpk = psi3d(il,jl,k) - tdma_cp(il,jl,k)*dpk
+               psi3d(il,jl,k) = dpk
+            end do
          end do
       end do
-   end do
-   ! update halo nodes with pressure 
-   !$acc host_data use_device(p)
-   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, p, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, p, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   !$acc end host_data
-   call nvtxEndRange
-   !########################################################################################################################################
-   ! END STEP 7: POISSON SOLVER FOR PRESSURE
-   !########################################################################################################################################
-   call nvtxEndRange
+      call nvtxEndRange
+
+      call nvtxStartRange("FFT backwards along x and y w/ transpositions")
+      ! psi(kx,ky,z) -> psi(ky,z,kx)
+      CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
+      ! psi(ky,z,kx) -> psi(y,z,kx)
+      status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_INVERSE)
+      if (status /= CUFFT_SUCCESS) write(*,*) 'Y inverse error: ', status
+      ! psi(y,z,kx) -> psi(kx,y,z)
+      CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX,[0,0,0], piX_d2z%halo_extents))
+      !$acc host_data use_device(p)
+      ! psi(kx,y,z) -> p(x,y,z)
+      status = cufftExecZ2D(planXb, psi_d, p)
+      if (status /= CUFFT_SUCCESS) write(*,*) 'X inverse error: ', status
+      !$acc end host_data
+
+      ! update halo nodes with pressure 
+      !$acc host_data use_device(p)
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, p, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, p, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+      !$acc end host_data
+      call nvtxEndRange
+      !########################################################################################################################################
+      ! END STEP 7: POISSON SOLVER FOR PRESSURE
+      !########################################################################################################################################
+      call nvtxEndRange
 
 
-   call nvtxStartRange("Correction")
-   !########################################################################################################################################
-   ! START STEP 8: VELOCITY CORRECTION
-   ! ########################################################################################################################################
-   ! 8.1 Correct velocity 
-   ! 8.2 Call halo update
-   ! Correct velocity, pressure has also the halo
-   umax=0.d0
-   vmax=0.d0
-   wmax=0.d0
-   !$acc parallel loop collapse(3) reduction(max:umax,vmax,wmax)
-   do k=1+halo_ext, piX%shape(3)-halo_ext
-      do j=1+halo_ext, piX%shape(2)-halo_ext
-         do i = 1, piX%shape(1) ! equal to nx (no halo on x)
-              im=i-1
-              jm=j-1
-              km=k-1
-              kg=piX%lo(3)  + k - 1 - halo_ext
-              if (im < 1) im=nx
-              if (kg .eq. 1) then
-              u(i,j,k)=u(i,j,k) - dt/rho*(p(i,j,k)-p(im,j,k))*dxi
-              v(i,j,k)=v(i,j,k) - dt/rho*(p(i,j,k)-p(i,jm,k))*dyi
-              else
-              u(i,j,k)=u(i,j,k) - dt/rho*(p(i,j,k)-p(im,j,k))*dxi
-              v(i,j,k)=v(i,j,k) - dt/rho*(p(i,j,k)-p(i,jm,k))*dyi
-              w(i,j,k)=w(i,j,k) - dt/rho*(p(i,j,k)-p(i,j,km))*dzi(kg)
-              endif
-              umax=max(umax,u(i,j,k))
-              vmax=max(vmax,v(i,j,k))
-              wmax=max(wmax,w(i,j,k))
-          enddo
+      call nvtxStartRange("Correction")
+      !########################################################################################################################################
+      ! START STEP 8: VELOCITY CORRECTION
+      ! ########################################################################################################################################
+      ! 8.1 Correct velocity 
+      ! 8.2 Call halo update
+      ! Correct velocity, pressure has also the halo
+      umax=0.d0
+      vmax=0.d0
+      wmax=0.d0
+      !$acc parallel loop collapse(3) reduction(max:umax,vmax,wmax)
+      do k=1+halo_ext, piX%shape(3)-halo_ext
+         do j=1+halo_ext, piX%shape(2)-halo_ext
+            do i = 1, piX%shape(1) ! equal to nx (no halo on x)
+               im=i-1
+               jm=j-1
+               km=k-1
+               kg=piX%lo(3)  + k - 1 - halo_ext
+               if (im < 1) im=nx
+               if (kg .eq. 1) then
+               u(i,j,k)=u(i,j,k) - dts/rho*(p(i,j,k)-p(im,j,k))*dxi
+               v(i,j,k)=v(i,j,k) - dts/rho*(p(i,j,k)-p(i,jm,k))*dyi
+               else
+               u(i,j,k)=u(i,j,k) - dts/rho*(p(i,j,k)-p(im,j,k))*dxi
+               v(i,j,k)=v(i,j,k) - dts/rho*(p(i,j,k)-p(i,jm,k))*dyi
+               w(i,j,k)=w(i,j,k) - dts/rho*(p(i,j,k)-p(i,j,km))*dzi(kg)
+               endif
+               umax=max(umax,u(i,j,k))
+               vmax=max(vmax,v(i,j,k))
+               wmax=max(wmax,w(i,j,k))
+            enddo
+         enddo
       enddo
-   enddo
 
-   ! 8.3 update halos (y direction), required to then compute the RHS of Poisson equation because of staggered grid
-   !$acc host_data use_device(u,v,w)
-   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, v, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, v, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
-   CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
-   !$acc end host_data 
+      ! 8.3 update halos (y direction), required to then compute the RHS of Poisson equation because of staggered grid
+      !$acc host_data use_device(u,v,w)
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, u, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, v, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, v, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 2))
+      CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
+      !$acc end host_data 
 
-   maxdiv=0.d0
-   !$acc parallel loop collapse(3) reduction(max:maxdiv)
-   do k=1+halo_ext, piX%shape(3)-halo_ext
-      do j=1+halo_ext, piX%shape(2)-halo_ext
-         do i = 1, piX%shape(1) ! equal to nx (no halo on x)
-              ip=i+1
-              jp=j+1
-              kp=k+1
-              kg=piX%lo(3)  + k - 1 - halo_ext
-              if (ip > nx) ip=1
-              div(i,j,k)=dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))
-              maxdiv=max(maxdiv,abs(div(i,j,k)))
-          enddo
+      ! 8.4 re-impose no-slip on the wall ghost nodes of u and v (the correction changed the first/last interior cell)
+      !$acc parallel loop collapse(3)
+      do k=1, piX%shape(3)
+         do j=1, piX%shape(2)
+            do i=1,nx
+               kg = piX%lo(3) + k - 1 - halo_ext
+               if (kg .eq. 0)    u(i,j,k) = -u(i,j,k+1)
+               if (kg .eq. 0)    v(i,j,k) = -v(i,j,k+1)
+               if (kg .eq. nz+1) u(i,j,k) = -u(i,j,k-1)
+               if (kg .eq. nz+1) v(i,j,k) = -v(i,j,k-1)
+            enddo
+         enddo
       enddo
+
+      maxdiv=0.d0
+      !$acc parallel loop collapse(3) reduction(max:maxdiv)
+      do k=1+halo_ext, piX%shape(3)-halo_ext
+         do j=1+halo_ext, piX%shape(2)-halo_ext
+            do i = 1, piX%shape(1) ! equal to nx (no halo on x)
+               ip=i+1
+               jp=j+1
+               kp=k+1
+               kg=piX%lo(3)  + k - 1 - halo_ext
+               if (ip > nx) ip=1
+               div(i,j,k)=dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))
+               maxdiv=max(maxdiv,abs(div(i,j,k)))
+            enddo
+         enddo
+      enddo
+      write(*,*) "Max divergence after correction, Stage ", maxdiv, stage
+      call nvtxEndRange
    enddo
-   !write(*,*) "Max divergence after correction ", maxdiv
 
    call MPI_Allreduce(umax,gumax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
    call MPI_Allreduce(vmax,gvmax,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD, ierr)
@@ -1067,7 +1075,6 @@ do t=tstart,tfin
    !########################################################################################################################################
    ! END STEP 8: VELOCITY CORRECTION  
    !########################################################################################################################################
-   call nvtxEndRange
 
 
    !########################################################################################################################################
