@@ -93,7 +93,9 @@ config%pdims = pdims
 halo = [0, halo_ext, halo_ext] ! no halo along x neeed because is periodic and in physical space i have x-pencil
 ! for transpositions
 config%transpose_comm_backend = comm_backend
-config%transpose_axis_contiguous = .true.
+! x- and y-pencils contiguous along x and y (needed by the FFTs); z-pencil kept in (x,y,z) order so that
+! the TDMA (one thread per (kx,ky) column, sweeping along z) has coalesced memory accesses
+config%transpose_axis_contiguous = [.true., .true., .false.]
 ! for halo exchanges
 config%halo_comm_backend = CUDECOMP_HALO_COMM_MPI
 ! Setting for periodic halos in all directions (non required to be in config)
@@ -921,7 +923,7 @@ do t=tstart,tfin
    ! psi(y,z,kx) -> psi(ky,z,kx)
    status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_FORWARD)
    if (status /= CUFFT_SUCCESS) write(*,*) 'Y forward error: ', status
-   ! psi(ky,z,kx) -> psi(z,kx,ky)
+   ! psi(ky,z,kx) -> psi(kx,ky,z)
    CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX)) 
 
    call nvtxEndRange
@@ -935,23 +937,23 @@ do t=tstart,tfin
          dpk = (0.d0,0.d0)
          !$acc loop seq
          do k = 1, nz
-            dpk = (psi3d(k,il,jl) - tdma_a(k)*dpk)*tdma_inv(il,jl,k)
-            psi3d(k,il,jl) = dpk
+            dpk = (psi3d(il,jl,k) - tdma_a(k)*dpk)*tdma_inv(il,jl,k)
+            psi3d(il,jl,k) = dpk
          end do
          ! Top ghost node: x(nz+1) = (d(nz+1) - a(nz+1)*d'(nz))/pivot(nz+1), d(nz+1) = 0
          dpk = -tdma_ftop(il,jl)*dpk
          ! Back substitution: x(k) = d'(k) - c'(k)*x(k+1)
          !$acc loop seq
          do k = nz, 1, -1
-            dpk = psi3d(k,il,jl) - tdma_cp(il,jl,k)*dpk
-            psi3d(k,il,jl) = dpk
+            dpk = psi3d(il,jl,k) - tdma_cp(il,jl,k)*dpk
+            psi3d(il,jl,k) = dpk
          end do
       end do
    end do
    call nvtxEndRange
 
    call nvtxStartRange("FFT backwards along x and y w/ transpositions")
-   ! psi(z,kx,ky) -> psi(ky,z,kx)
+   ! psi(kx,ky,z) -> psi(ky,z,kx)
    CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
    ! psi(ky,z,kx) -> psi(y,z,kx)
    status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_INVERSE)
