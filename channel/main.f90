@@ -27,9 +27,6 @@ integer :: batchsize
 integer :: status
 integer :: i,j,k,il,jl,kl,ig,jg,kg,t,stage
 integer :: im,ip,jm,jp,km,kp,last,idx,kgm
-! TDMA variables
-double precision, allocatable :: a(:), b(:), c(:)
-double complex, allocatable :: d(:), sol(:)
 ! TDMA precomputed coefficients (time independent): a(k), c(k) and, per (kx,ky) column, 1/pivot, c'(k) and top-BC factor
 double precision, allocatable :: tdma_a(:), tdma_c(:), tdma_inv(:,:,:), tdma_cp(:,:,:), tdma_ftop(:,:)
 double precision :: lam, den, cpk, atop, btop
@@ -189,9 +186,6 @@ allocate(psi_d(max(nElemX_d2z, nElemY_d2z, nElemZ_d2z)))
 allocate(u(piX%shape(1),piX%shape(2),piX%shape(3)),v(piX%shape(1),piX%shape(2),piX%shape(3)),w(piX%shape(1),piX%shape(2),piX%shape(3))) !velocity vector
 allocate(rhsu(piX%shape(1),piX%shape(2),piX%shape(3)),rhsv(piX%shape(1),piX%shape(2),piX%shape(3)),rhsw(piX%shape(1),piX%shape(2),piX%shape(3))) ! right hand side u,v,w
 allocate(rhsu_o(piX%shape(1),piX%shape(2),piX%shape(3)),rhsv_o(piX%shape(1),piX%shape(2),piX%shape(3)),rhsw_o(piX%shape(1),piX%shape(2),piX%shape(3))) ! right hand side u,v,w
-allocate(div(piX%shape(1),piX%shape(2),piX%shape(3))) 
-!TDMA solver
-allocate(a(0:nz+1),b(0:nz+1),c(0:nz+1),d(0:nz+1),sol(0:nz+1))
 !PFM variables
 #if phiflag == 1
 allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphi(piX%shape(1),piX%shape(2),piX%shape(3)),q_phi(piX%shape(1),piX%shape(2),piX%shape(3)),psidi(piX%shape(1),piX%shape(2),piX%shape(3)))
@@ -204,11 +198,11 @@ allocate(theta(piX%shape(1),piX%shape(2),piX%shape(3)),rhstheta(piX%shape(1),piX
 allocate(rhstheta_o(piX%shape(1),piX%shape(2),piX%shape(3)))
 #endif
 ! allocate arrays for transpositions and halo exchanges 
-CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, work_d, nElemWork))
+!CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, work_d, nElemWork)) ! not needed: no transposes in physical space
 CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, work_halo_d, nElemWork_halo))
 ! allocate arrays for transpositions
 CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_descD2Z, work_d_d2z, nElemWork_d2z))
-CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_descD2Z, work_halo_d_d2z, nElemWork_halo_d2z)) ! not required
+!CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_descD2Z, work_halo_d_d2z, nElemWork_halo_d2z)) ! not required: no halo updates in spectral space
 
 ! TDMA variables, inizialize the coefficients for the tridiagonal solver (a,b,c) and the right hand side (d)
 ! TDMA: z-pencil sizes/offsets in the complex space (fixed for the whole run)
@@ -1047,8 +1041,8 @@ do t=tstart,tfin
                kp=k+1
                kg=piX%lo(3)  + k - 1 - halo_ext
                if (ip > nx) ip=1
-               div(i,j,k)=dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))
-               maxdiv=max(maxdiv,abs(div(i,j,k)))
+               ! divergence not stored (saves one full array), only its maximum is needed
+               maxdiv=max(maxdiv,abs(dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))))
             enddo
          enddo
       enddo
