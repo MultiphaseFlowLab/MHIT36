@@ -102,6 +102,7 @@ Performance (NS only)
 * 2048 x 768 x 576   |   4 x GH200@Alps-CSCS  | 210 ms/timestep
 * 2048 x 768 x 576   |  16 x A100@Leonardo    | 140 ms/timestep 
 * 3456 x 1296 x 960  |  16 x A100@Leonardo    | 780 ms/timestep
+* 8192 x 4096 x 2048 | 256 x A100@Leonardo    |1730 ms/timestep  
 
 - Phase-field introduces about 50% of overhead compared to NS only (RK4-ACDI)
 - Max resolution tested: 4096^3 (hit) and 8192 x 4096 x 2048 (channel)
