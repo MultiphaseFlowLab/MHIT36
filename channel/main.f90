@@ -12,6 +12,7 @@ use param
 use mpivar
 use cudecompvar
 use nvtx
+use tdma
 
 
 implicit none
@@ -27,10 +28,6 @@ integer :: batchsize
 integer :: status
 integer :: i,j,k,il,jl,kl,ig,jg,kg,t,stage
 integer :: im,ip,jm,jp,km,kp,last,idx,kgm
-! TDMA precomputed coefficients (time independent): a(k), c(k) and, per (kx,ky) column, 1/pivot, c'(k) and top-BC factor
-double precision, allocatable :: tdma_a(:), tdma_c(:), tdma_inv(:,:,:), tdma_cp(:,:,:), tdma_ftop(:,:)
-double precision :: lam, den, cpk, atop, btop
-double complex :: dpk
 ! working arrays
 double complex, allocatable :: psi(:)
 double precision, allocatable :: ua(:,:,:)
@@ -42,13 +39,10 @@ character(len=40) :: namefile
 character(len=4) :: itcount
 ! Code variables
 double precision ::err, maxErr, meanp, gmeanp
-double complex, device, pointer :: psi3d(:,:,:)
 double precision :: k2,maxdiv
 double precision :: dts ! RK3 sub-step time step, (alpha+beta)*dt, used by the projection
 double precision :: cnorm ! rho/dts and the 1/(nx*ny) FFT normalization, applied to the Poisson RHS
 !integer :: il, jl, ig, jg
-integer :: offsets(3), xoff, yoff
-integer :: np(3)
 ! Alan Williamson classic
 double precision, parameter :: alpha(3) = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /)
 double precision, parameter :: beta(3)  = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12.d0 /)
@@ -60,6 +54,9 @@ double precision, parameter :: beta(3)  = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12
 #define phiflag 0
 ! Enable or disable temperature field
 #define thetaflag 0
+! Poisson solver: 0 = x-y FFTs + transposes to z-pencil + TDMA (4 transposes)
+!                 1 = x-y FFTs + TDMA distributed along z in the y-pencil (2 transposes, no Y<->Z)
+#define poisson_dist 1
 
 !########################################################################################################################################
 ! 1. INITIALIZATION OF MPI AND cuDECOMP AUTOTUNING : START
@@ -109,6 +106,10 @@ if (comm_backend == 0) then
    options%autotune_transpose_backend = .true.
    options%autotune_halo_backend = .false.
 endif
+#if poisson_dist == 1
+! Y<->Z transposes are not used: autotune the grid on X->Y and Y->X only
+options%transpose_op_weights = [1.d0, 0.d0, 0.d0, 1.d0]
+#endif
 options%transpose_use_inplace_buffers = .true.
 options%transpose_input_halo_extents(:, 1) = halo
 options%transpose_output_halo_extents(:, 4) = halo
@@ -204,48 +205,12 @@ CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, work_halo_d, nElemWork_hal
 CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_descD2Z, work_d_d2z, nElemWork_d2z))
 !CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_descD2Z, work_halo_d_d2z, nElemWork_halo_d2z)) ! not required: no halo updates in spectral space
 
-! TDMA variables, inizialize the coefficients for the tridiagonal solver (a,b,c) and the right hand side (d)
-! TDMA: z-pencil sizes/offsets in the complex space (fixed for the whole run)
-np(piZ_d2z%order(1)) = piZ_d2z%shape(1)
-np(piZ_d2z%order(2)) = piZ_d2z%shape(2)
-np(piZ_d2z%order(3)) = piZ_d2z%shape(3)
-offsets(piZ_d2z%order(1)) = piZ_d2z%lo(1) - 1
-offsets(piZ_d2z%order(2)) = piZ_d2z%lo(2) - 1
-offsets(piZ_d2z%order(3)) = piZ_d2z%lo(3) - 1
-xoff = offsets(1)
-yoff = offsets(2)
-npx = np(1)
-npy = np(2)
-! TDMA: matrix does not change in time -> do the forward-elimination on the coefficients once here (on the CPU, done only once)
-! layout (il,jl,k) so that consecutive GPU threads (il) access consecutive memory in the solve
-allocate(tdma_a(nz), tdma_c(nz), tdma_inv(npx,npy,nz), tdma_cp(npx,npy,nz), tdma_ftop(npx,npy))
-do k = 1, nz
-   tdma_a(k) = 2.0d0*(dzi(k)**2.d0*dzi(k+1))/(dzi(k)+dzi(k+1))
-   tdma_c(k) = 2.0d0*(dzi(k)*dzi(k+1)**2.d0)/(dzi(k)+dzi(k+1))
-enddo
-do jl = 1, npy
-   do il = 1, npx
-      ig = xoff + il
-      jg = yoff + jl
-      lam = 2.d0*(cos(kx(ig)*dx)-1.d0)*dxi*dxi + 2.d0*(cos(ky(jg)*dy)-1.d0)*dyi*dyi
-      ! Neumann BC at bottom ghost (a=0, b=-1, c=1, d=0) -> c'(0) = -1, d'(0) = 0
-      cpk = -1.d0
-      do k = 1, nz
-         den = -tdma_a(k) - tdma_c(k) + lam - tdma_a(k)*cpk
-         tdma_inv(il,jl,k) = 1.d0/den
-         cpk = tdma_c(k)/den
-         tdma_cp(il,jl,k) = cpk
-      enddo
-      ! Neumann BC at top ghost (a=1, b=-1, c=0, d=0); pressure pinned for the (kx,ky)=(0,0) mode
-      atop =  1.d0
-      btop = -1.d0
-      if (ig == 1 .and. jg == 1) then
-         atop = 0.d0
-         btop = 1.d0
-      endif
-      tdma_ftop(il,jl) = atop/(btop - atop*cpk)
-   enddo
-enddo
+! TDMA along z for the Poisson equation: coefficients and factorizations (time independent), see tdma.f90
+#if poisson_dist == 1
+call tdma_dist_init
+#else
+call tdma_init
+#endif
 !########################################################################################################################################
 ! END STEP2: ALLOCATE ARRAYS
 !########################################################################################################################################
@@ -918,38 +883,26 @@ do t=tstart,tfin
       ! psi(y,z,kx) -> psi(ky,z,kx)
       status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_FORWARD)
       if (status /= CUFFT_SUCCESS) write(*,*) 'Y forward error: ', status
+#if poisson_dist == 0
       ! psi(ky,z,kx) -> psi(kx,ky,z)
-      CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX)) 
-
+      CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
+#endif
       call nvtxEndRange
-      call c_f_pointer(c_devloc(psi_d), psi3d, piZ_d2z%shape)
+
       call nvtxStartRange("Solution")
-      ! Thomas algorithm with precomputed coefficients (see STEP 2), one thread per (kx,ky) column, solved in place
-      !$acc parallel loop collapse(2) gang vector private(dpk)
-      do jl = 1, npy
-         do il = 1, npx
-            ! Forward sweep: d'(k) = (d(k) - a(k)*d'(k-1)) / pivot(k), with d'(0) = 0 (bottom Neumann)
-            dpk = (0.d0,0.d0)
-            !$acc loop seq
-            do k = 1, nz
-               dpk = (psi3d(il,jl,k) - tdma_a(k)*dpk)*tdma_inv(il,jl,k)
-               psi3d(il,jl,k) = dpk
-            end do
-            ! Top ghost node: x(nz+1) = (d(nz+1) - a(nz+1)*d'(nz))/pivot(nz+1), d(nz+1) = 0
-            dpk = -tdma_ftop(il,jl)*dpk
-            ! Back substitution: x(k) = d'(k) - c'(k)*x(k+1)
-            !$acc loop seq
-            do k = nz, 1, -1
-               dpk = psi3d(il,jl,k) - tdma_cp(il,jl,k)*dpk
-               psi3d(il,jl,k) = dpk
-            end do
-         end do
-      end do
+      ! TDMA along z, in place: z distributed in the y-pencil (poisson_dist 1) or full columns in the z-pencil (0)
+#if poisson_dist == 1
+      call tdma_dist_solve(psi_d)
+#else
+      call tdma_solve(psi_d)
+#endif
       call nvtxEndRange
 
       call nvtxStartRange("FFT backwards along x and y w/ transpositions")
+#if poisson_dist == 0
       ! psi(kx,ky,z) -> psi(ky,z,kx)
       CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
+#endif
       ! psi(ky,z,kx) -> psi(y,z,kx)
       status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_INVERSE)
       if (status /= CUFFT_SUCCESS) write(*,*) 'Y inverse error: ', status
@@ -1031,22 +984,22 @@ do t=tstart,tfin
          enddo
       enddo
 
-      !maxdiv=0.d0
-      !!$acc parallel loop collapse(3) reduction(max:maxdiv)
-      !do k=1+halo_ext, piX%shape(3)-halo_ext
-      !   do j=1+halo_ext, piX%shape(2)-halo_ext
-      !      do i = 1, piX%shape(1) ! equal to nx (no halo on x)
-      !         ip=i+1
-      !         jp=j+1
-      !!         kp=k+1
-      !         kg=piX%lo(3)  + k - 1 - halo_ext
-      !         if (ip > nx) ip=1
-      !         ! divergence not stored (saves one full array), only its maximum is needed
-      !         maxdiv=max(maxdiv,abs(dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))))
-      !      enddo
-      !   enddo
-      !enddo
-      !write(*,*) "Max divergence after correction, Stage ", maxdiv, stage
+      maxdiv=0.d0
+      !$acc parallel loop collapse(3) reduction(max:maxdiv)
+      do k=1+halo_ext, piX%shape(3)-halo_ext
+         do j=1+halo_ext, piX%shape(2)-halo_ext
+            do i = 1, piX%shape(1) ! equal to nx (no halo on x)
+               ip=i+1
+               jp=j+1
+               kp=k+1
+               kg=piX%lo(3)  + k - 1 - halo_ext
+               if (ip > nx) ip=1
+               ! divergence not stored (saves one full array), only its maximum is needed
+               maxdiv=max(maxdiv,abs(dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))))
+            enddo
+         enddo
+      enddo
+      write(*,*) "Max divergence after correction, Stage ", maxdiv, stage
       call nvtxEndRange
    enddo
 
