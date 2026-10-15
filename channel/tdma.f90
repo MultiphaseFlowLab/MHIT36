@@ -7,6 +7,8 @@
 !  - tdma_init / tdma_solve:           z-pencil (kx,ky,z), each rank has full columns (needs the Y<->Z transposes)
 !  - tdma_dist_init / tdma_dist_solve: y-pencil (ky,z,kx), z distributed over the ranks of zcomm (no Y<->Z transposes)
 module tdma
+use cudafor
+use iso_c_binding
 use param
 implicit none
 
@@ -21,9 +23,14 @@ double precision, allocatable :: tdma_inv(:,:,:), tdma_cp(:,:,:), tdma_ftop(:,:)
 integer :: ncy, nzy, nkxy, zoffy, kxoffy, zcomm, zrank, zsize, nchunk
 ! modified wavenumbers, interior Thomas factor c' and response p to the first row (per column and row)
 double precision, allocatable :: lamx(:), lamy(:), dtdma_cp(:,:,:), dtdma_p(:,:,:)
-! reduced system (2 rows per z-rank, 2*zsize rows per column): sub-diagonal, 1/pivot, c', and its RHS/solution buffers
+! reduced system (2 rows per z-rank, 2*zsize rows per column): sub-diagonal, 1/pivot, c'
 double precision, allocatable :: red_sub(:,:,:), red_inv(:,:,:), red_cp(:,:,:)
-complex(8), allocatable :: red_sbuf(:,:,:), red_rbuf(:,:,:)
+! RHS/solution buffers of the reduced system, exchanged with MPI_Alltoall: plain device memory (not managed),
+! so that CUDA-aware MPI sends them directly from the GPU; red_sptr/red_rptr are host-side aliases of their
+! device addresses, used only as MPI buffer arguments (never dereferenced on the host); c_devloc gives a c_devptr,
+! converted with transfer to a plain c_ptr so that the standard c_f_pointer can build a host pointer
+complex(8), device, allocatable :: red_sbuf(:,:,:), red_rbuf(:,:,:)
+complex(8), pointer :: red_sptr(:), red_rptr(:)
 
 contains
 
@@ -127,6 +134,8 @@ subroutine tdma_dist_init
    integer :: i, j, k, kg, col, dest, cc, src, row
    double precision :: lam, den, cpk, pk, qk, p2, q2, pm1, qm1, a1, b1, c1, am, bm, cm
    double precision, allocatable :: redc_s(:,:,:,:), redc_r(:,:,:,:)
+   double precision, device, allocatable :: redc_sd(:,:,:,:), redc_rd(:,:,:,:)
+   double precision, pointer :: redc_sptr(:), redc_rptr(:)
    call tdma_coeff
    if (piY_d2z%order(1) /= 2 .or. piY_d2z%order(2) /= 3) then
       if (rank.eq.0) write(*,*) "tdma_dist: y-pencil must be stored as (y,z,kx)"
@@ -162,6 +171,8 @@ subroutine tdma_dist_init
    redc_s(3,:,:,:) = 0.d0
    red_sbuf = (0.d0,0.d0)
    red_rbuf = (0.d0,0.d0)
+   call c_f_pointer(transfer(c_devloc(red_sbuf), c_null_ptr), red_sptr, [2*nchunk*zsize])
+   call c_f_pointer(transfer(c_devloc(red_rbuf), c_null_ptr), red_rptr, [2*nchunk*zsize])
    do i = 1, nkxy
       do j = 1, ncy
          lam = lamx(i) + lamy(j)
@@ -222,7 +233,14 @@ subroutine tdma_dist_init
       enddo
    enddo
    ! gather the reduced rows of each column on the z-rank that solves it and factorize (Thomas)
-   call mpi_alltoall(redc_s, 6*nchunk, MPI_DOUBLE_PRECISION, redc_r, 6*nchunk, MPI_DOUBLE_PRECISION, zcomm, ierr)
+   ! (exchanged through device copies: no MPI on managed buffers)
+   allocate(redc_sd(3,2,nchunk,0:zsize-1), redc_rd(3,2,nchunk,0:zsize-1))
+   redc_sd = redc_s
+   call c_f_pointer(transfer(c_devloc(redc_sd), c_null_ptr), redc_sptr, [6*nchunk*zsize])
+   call c_f_pointer(transfer(c_devloc(redc_rd), c_null_ptr), redc_rptr, [6*nchunk*zsize])
+   call mpi_alltoall(redc_sptr, 6*nchunk, MPI_DOUBLE_PRECISION, redc_rptr, 6*nchunk, MPI_DOUBLE_PRECISION, zcomm, ierr)
+   redc_r = redc_rd
+   deallocate(redc_sd, redc_rd)
    do cc = 1, nchunk
       cpk = 0.d0
       do src = 0, zsize-1
@@ -281,9 +299,7 @@ subroutine tdma_dist_solve(psi)
       enddo
    enddo
    ! (2) reduced system: rows of each column gathered on one z-rank, Thomas with precomputed factors, sent back
-   !$acc host_data use_device(red_sbuf, red_rbuf)
-   call mpi_alltoall(red_sbuf, 2*nchunk, MPI_DOUBLE_COMPLEX, red_rbuf, 2*nchunk, MPI_DOUBLE_COMPLEX, zcomm, ierr)
-   !$acc end host_data
+   call mpi_alltoall(red_sptr, 2*nchunk, MPI_DOUBLE_COMPLEX, red_rptr, 2*nchunk, MPI_DOUBLE_COMPLEX, zcomm, ierr)
    !$acc parallel loop gang vector private(dpk, n, row, src)
    do cc = 1, nchunk
       dpk = (0.d0,0.d0)
@@ -302,9 +318,7 @@ subroutine tdma_dist_solve(psi)
          red_rbuf(row,cc,src) = dpk
       enddo
    enddo
-   !$acc host_data use_device(red_sbuf, red_rbuf)
-   call mpi_alltoall(red_rbuf, 2*nchunk, MPI_DOUBLE_COMPLEX, red_sbuf, 2*nchunk, MPI_DOUBLE_COMPLEX, zcomm, ierr)
-   !$acc end host_data
+   call mpi_alltoall(red_rptr, 2*nchunk, MPI_DOUBLE_COMPLEX, red_sptr, 2*nchunk, MPI_DOUBLE_COMPLEX, zcomm, ierr)
    ! (3) local reconstruction: x(k) = z(k) - x(1)*p(k) - x(nzy)*q(k), q(nzy-1) = c'(nzy-1), q(k) = -c'(k)*q(k+1)
    !$acc parallel loop collapse(2) gang vector private(x1, xm, qk, col, dest, cc)
    do i = 1, nkxy
