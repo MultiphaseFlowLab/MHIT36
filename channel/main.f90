@@ -86,6 +86,11 @@ CHECK_CUDECOMP_EXIT(cudecompInit(handle, MPI_COMM_WORLD))
 CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(config)) ! Initializing to default values is required to ensure no entries are left uninitialized.
 pdims = [pr, pc] !pr and pc are the number of pencil along the different directions
 config%pdims = pdims
+#if poisson_dist == 1
+! column-major rank assignment: the pr ranks of the X<->Y transposes are consecutive (same node for pr <= GPUs per node),
+! the TDMA communicator (pc ranks, along z) spans the nodes; replaces the deprecated CUDECOMP_USE_COL_MAJOR_RANK_ORDER
+config%rank_order = CUDECOMP_RANK_ORDER_COL_MAJOR
+#endif
 halo = [0, halo_ext, halo_ext] ! no halo along x neeed because is periodic and in physical space i have x-pencil
 ! for transpositions
 config%transpose_comm_backend = comm_backend
@@ -883,26 +888,26 @@ do t=tstart,tfin
       ! psi(y,z,kx) -> psi(ky,z,kx)
       status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_FORWARD)
       if (status /= CUFFT_SUCCESS) write(*,*) 'Y forward error: ', status
-#if poisson_dist == 0
-      ! psi(ky,z,kx) -> psi(kx,ky,z)
-      CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
-#endif
-      call nvtxEndRange
+      #if poisson_dist == 0
+         ! psi(ky,z,kx) -> psi(kx,ky,z)
+         CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
+      #endif
+         call nvtxEndRange
 
-      call nvtxStartRange("Solution")
-      ! TDMA along z, in place: z distributed in the y-pencil (poisson_dist 1) or full columns in the z-pencil (0)
-#if poisson_dist == 1
-      call tdma_dist_solve(psi_d)
-#else
-      call tdma_solve(psi_d)
-#endif
+         call nvtxStartRange("Solution")
+         ! TDMA along z, in place: z distributed in the y-pencil (poisson_dist 1) or full columns in the z-pencil (0)
+      #if poisson_dist == 1
+         call tdma_dist_solve(psi_d)
+      #else
+         call tdma_solve(psi_d)
+      #endif
       call nvtxEndRange
 
       call nvtxStartRange("FFT backwards along x and y w/ transpositions")
-#if poisson_dist == 0
-      ! psi(kx,ky,z) -> psi(ky,z,kx)
-      CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
-#endif
+      #if poisson_dist == 0
+         ! psi(kx,ky,z) -> psi(ky,z,kx)
+         CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_descD2Z, psi_d, psi_d, work_d_d2z, CUDECOMP_DOUBLE_COMPLEX))
+      #endif
       ! psi(ky,z,kx) -> psi(y,z,kx)
       status = cufftExecZ2Z(planY, psi_d, psi_d, CUFFT_INVERSE)
       if (status /= CUFFT_SUCCESS) write(*,*) 'Y inverse error: ', status
