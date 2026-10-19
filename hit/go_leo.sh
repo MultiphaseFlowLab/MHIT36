@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account="IscrB_EXCEED"
+#SBATCH --account="IscrB_BMO"
 #SBATCH --job-name="cudec"
 #SBATCH --time=00:05:00
 #SBATCH --nodes=1      ##adjust
