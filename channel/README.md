@@ -6,7 +6,8 @@ For time integration, a fully explicit scheme is used: RK4 for ACDI + RK3 for Na
 
 ## Main features at a glance:
 - No-slip boundary conditions at the two walls ($z=\pm h$); BCs interpolated at the walls (standard approach for staggered)
-- Poisson solver based on FFT2 along $x$ and $y$ + TDMA along $z$.
+- Poisson solver based on FFT2 along $x$ and $y$ + TDMA along $z$
+- Possibility to use a distributed TDMA (avoid Y->Z transposes); better scalability and about 3x faster.
 - Non-uniform grid along $z$, any stretching function can be used (defined in read_input.f90)
 - Domain of arbitary dimensions along all three directions
 
@@ -18,6 +19,8 @@ For time integration, a fully explicit scheme is used: RK4 for ACDI + RK3 for Na
 **Optional features (conditional compilation)**  
 - Phase-field module: Can be enabled or disabled. Default is single-phase.  
 - Passive scaler: Can be enabled or disabled. Default is single-phase.  
+- PCR-TDMA: Can be enabled or disabled. Default is TDMA. 
+
 
 ## Turbulent channel flow 
 - Turbulent channel flow at $Re_\tau=590$, Grid: $1536 \times 768 \times 576$
@@ -26,7 +29,7 @@ For time integration, a fully explicit scheme is used: RK4 for ACDI + RK3 for Na
 
 ## Validation (single-phase)
 - Turbulent channel flow at $Re_\tau=590$, Grid: $1536 \times 768 \times 576$ -> See SM of CPC paper 2026.
-- Turbulent channel flow at $Re_\tau=590$, Grid: $512 \times 256 \times 384$ -> See below
+- Turbulent channel flow at $Re_\tau=180$, Grid: $512 \times 256 \times 384$ -> See below
 
 ![Test](../val/valch.png)
 
