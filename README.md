@@ -93,20 +93,20 @@ Performance (NS only)
 
 ## Reference performance and scaling (channel configuration)
 Performance (NS only)
-* 256 x 128 x 200    |   1 x RTX6000Q@Marge   |  10 ms/timestep
-* 256 x 128 x 200    |   2 x RTX5000@Milton   |  11 ms/timestep 
-* 512 x 256 x 384    |   4 x A100@Leonardo    |  20 ms/timestep 
-* 1536 x 768 x 576   |   4 x A100@Leonardo    | 220 ms/timestep 
-* 1536 x 768 x 576   |   4 x GH200@Alps-CSCS  | 130 ms/timestep
-* 2048 x 768 x 576   |   4 x A100@Leonardo    | 330 ms/timestep 
-* 2048 x 768 x 576   |   4 x GH200@Alps-CSCS  | 210 ms/timestep
-* 2048 x 768 x 576   |  16 x A100@Leonardo    | 140 ms/timestep 
-* 3456 x 1296 x 960  |  16 x A100@Leonardo    | 780 ms/timestep
-* 8192 x 4096 x 2048 | 256 x A100@Leonardo    |1730 ms/timestep  
+* 192 x 127 x 128    |   2 x RTX6000@Marge    |   4 ms/timestep  | PCR-TDMA
+* 512 x 256 x 384    |   4 x A100@Leonardo    |  18 ms/timestep  | TDMA
+* 512 x 256 x 384    |   4 x A100@Leonardo    |  20 ms/timestep  | PCR-TDMA
+* 2048 x 768 x 576   |   4 x A100@Leonardo    | 330 ms/timestep  | TDMA
+* 2048 x 768 x 576   |   4 x A100@Leonardo    | 300 ms/timestep  | PCR-TDMA
+* 2048 x 768 x 576   |   4 x GH200@Alps-CSCS  | 210 ms/timestep  | TDMA
+* 2048 x 1024 x 768  |  16 x A100@Leonardo    | 440 ms/timestep  | TDMA
+* 2048 x 1024 x 768  |  16 x A100@Leonardo    | 160 ms/timestep  | PCR-TDMA
+* 8192 x 4096 x 2048 | 256 x A100@Leonardo    |1730 ms/timestep  | TDMA
 
 - Phase-field introduces about 50% of overhead compared to NS only (RK4-ACDI)
 - Max resolution tested: 4096^3 (hit) and 8192 x 4096 x 2048 (channel)
 - Max number of GPUs used: 512 (Leonardo) and 1024 (MN5)
+- Channel supports both TDMA and PCR-TDMA 
 
 
 ## Validation
