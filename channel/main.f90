@@ -56,7 +56,7 @@ double precision, parameter :: beta(3)  = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12
 #define thetaflag 0
 ! Poisson solver: 0 = x-y FFTs + transposes to z-pencil + TDMA (4 transposes)
 !                 1 = x-y FFTs + TDMA distributed along z in the y-pencil (2 transposes, no Y<->Z)
-#define poisson_dist 1
+#define poisson_dist 0
 
 !########################################################################################################################################
 ! 1. INITIALIZATION OF MPI AND cuDECOMP AUTOTUNING : START
@@ -989,22 +989,22 @@ do t=tstart,tfin
          enddo
       enddo
 
-      maxdiv=0.d0
-      !$acc parallel loop collapse(3) reduction(max:maxdiv)
-      do k=1+halo_ext, piX%shape(3)-halo_ext
-         do j=1+halo_ext, piX%shape(2)-halo_ext
-            do i = 1, piX%shape(1) ! equal to nx (no halo on x)
-               ip=i+1
-               jp=j+1
-               kp=k+1
-               kg=piX%lo(3)  + k - 1 - halo_ext
-               if (ip > nx) ip=1
-               ! divergence not stored (saves one full array), only its maximum is needed
-               maxdiv=max(maxdiv,abs(dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))))
-            enddo
-         enddo
-      enddo
-      write(*,*) "Max divergence after correction, Stage ", maxdiv, stage
+      !maxdiv=0.d0
+      !!$acc parallel loop collapse(3) reduction(max:maxdiv)
+      !do k=1+halo_ext, piX%shape(3)-halo_ext
+      !   do j=1+halo_ext, piX%shape(2)-halo_ext
+      !      do i = 1, piX%shape(1) ! equal to nx (no halo on x)
+      !         ip=i+1
+      !         jp=j+1
+      !         kp=k+1
+      !         kg=piX%lo(3)  + k - 1 - halo_ext
+      !         if (ip > nx) ip=1
+      !         ! divergence not stored (saves one full array), only its maximum is needed
+      !         maxdiv=max(maxdiv,abs(dxi*(u(ip,j,k)-u(i,j,k)) + dyi*(v(i,jp,k)-v(i,j,k)) + dzci(kg)*(w(i,j,kp)-w(i,j,k))))
+      !      enddo
+      !   enddo
+      !enddo
+      !write(*,*) "Max divergence after correction, Stage ", maxdiv, stage
       call nvtxEndRange
    enddo
 

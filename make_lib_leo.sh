@@ -3,7 +3,7 @@ cd cuDecomp
 mkdir build
 cd build
 module load profile/candidate
-module load nvhpc/25.3
+module load nvhpc/25.11
 module load hpcx-mpi/2.19
 cmake ..
 #enable nvshmem

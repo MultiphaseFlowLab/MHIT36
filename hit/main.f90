@@ -32,6 +32,7 @@ integer :: inY,enY,inZ,enZ
 integer, parameter :: Mx = 1, My = 2, Mz = 1
 !endDEBUG
 real(8), device, allocatable :: kx_d(:)
+real(8), device, allocatable :: kmod_d(:)
 ! working arrays
 complex(8), allocatable :: psi(:)
 real(8), allocatable :: ua(:,:,:)
@@ -45,7 +46,7 @@ character(len=4) :: itcount
 ! Code variables
 real(8)::err,maxErr
 complex(8), device, pointer :: phi3d(:,:,:)
-real(8) :: k2
+real(8) :: k2, normfft
 !integer :: il, jl, ig, jg
 integer :: offsets(3), xoff, yoff
 integer :: np(3)
@@ -238,6 +239,10 @@ do i = nx/2+1, nx
 enddo
 ! allocate k_d on the device (later on remove and use OpenACC + managed memory?)
 allocate(kx_d, source=kx)
+! modified wavenumber of the 2nd-order FD Laplacian (precomputed, used in the Poisson solver)
+allocate(kmod_d, source=2.d0*(cos(kx*dx)-1.d0)*dxi*dxi)
+! FFT normalization
+normfft = 1.d0/(dble(nx)*dble(ny)*dble(nz))
 
 allocate(mysin(nx), mycos(nx))
 do i=1,nx
@@ -625,16 +630,6 @@ do t=tstart,tfin
             enddo
          enddo
       enddo
-
-      !do k=1+halo_ext, piX%shape(3)-halo_ext
-      !   do j=1+halo_ext, piX%shape(2)-halo_ext
-      !      do i=1,nx
-      !         q_phi(i,j,k) = rk4a(stage)*q_phi(i,j,k) + dt*rhsphi(i,j,k)
-      !         phi(i,j,k)   = phi(i,j,k) + rk4b(stage)*q_phi(i,j,k)
-      !      enddo
-      !   enddo
-      !enddo
-      !!$acc end kernels
    enddo  ! end RK4 stages
 
    ! clip phi between 0 and 1
@@ -924,8 +919,9 @@ do t=tstart,tfin
          ig = xoff + il
          do k = 1, nz
             !k2 = kx_d(ig)**2 + kx_d(jg)**2 + kx_d(k)**2    
-            k2 = (2.d0*(cos(kx_d(ig)*dx)-1.d0) + 2.d0*(cos(kx_d(jg)*dx)-1.d0) + 2.d0*(cos(kx_d(k)*dx)-1.d0))*dxi*dxi !opt: precompute cosines?
-            phi3d(k,il,jl) = phi3d(k,il,jl)/k2/(int(nx,8)*int(ny,8)*int(nz,8))
+            !k2 = (2.d0*(cos(kx_d(ig)*dx)-1.d0) + 2.d0*(cos(kx_d(jg)*dx)-1.d0) + 2.d0*(cos(kx_d(k)*dx)-1.d0))*dxi*dxi
+            k2 = kmod_d(ig) + kmod_d(jg) + kmod_d(k)
+            phi3d(k,il,jl) = phi3d(k,il,jl)*normfft/k2
          enddo
       enddo
    enddo

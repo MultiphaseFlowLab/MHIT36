@@ -93,7 +93,7 @@ Performance (NS only)
 
 ## Reference performance and scaling (channel configuration)
 Performance (NS only)
-* 192 x 127 x 128    |   2 x RTX6000@Marge    |   4 ms/timestep  | PCR-TDMA
+* 192 x 128 x 128    |   2 x RTX6000Q@Marge   |   4 ms/timestep  | PCR-TDMA
 * 512 x 256 x 384    |   4 x A100@Leonardo    |  18 ms/timestep  | TDMA
 * 512 x 256 x 384    |   4 x A100@Leonardo    |  20 ms/timestep  | PCR-TDMA
 * 2048 x 768 x 576   |   4 x A100@Leonardo    | 330 ms/timestep  | TDMA
