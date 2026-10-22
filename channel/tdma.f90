@@ -264,10 +264,13 @@ subroutine tdma_dist_solve(psi)
    ! Distributed Thomas algorithm with precomputed coefficients, one thread per (ky,kx) column, solved in place
    use mpi
    use mpivar, only: ierr
+   use nvtx
    complex(8), device :: psi(ncy,nzy,nkxy)
    integer :: i, j, k, kg, col, dest, cc, src, n, row
    double precision :: lam, den, cpk, qk
    complex(8) :: dpk, zf, zl, x1, xm
+   ! NVTX sub-ranges of "Solution" (kernels are synchronous, so each range covers its own GPU work)
+   call nvtxStartRange("TDMA local solve")
    ! (1) interior rows 2..nzy-1: z = T_int^-1 d (forward with on-the-fly pivots, backward with precomputed c'),
    !     then RHS of the reduced rows: d(1) - c(1)*z(2) and d(nzy) - a(nzy)*z(nzy-1)
    !$acc parallel loop collapse(2) gang vector private(lam, cpk, den, kg, dpk, zf, zl, col, dest, cc)
@@ -298,8 +301,12 @@ subroutine tdma_dist_solve(psi)
          red_sbuf(2,cc,dest) = psi(j,nzy,i) - tdma_a(zoffy+nzy)*zl
       enddo
    enddo
+   call nvtxEndRange
    ! (2) reduced system: rows of each column gathered on one z-rank, Thomas with precomputed factors, sent back
+   call nvtxStartRange("TDMA alltoall 1")
    call mpi_alltoall(red_sptr, 2*nchunk, MPI_DOUBLE_COMPLEX, red_rptr, 2*nchunk, MPI_DOUBLE_COMPLEX, zcomm, ierr)
+   call nvtxEndRange
+   call nvtxStartRange("TDMA reduced system")
    !$acc parallel loop gang vector private(dpk, n, row, src)
    do cc = 1, nchunk
       dpk = (0.d0,0.d0)
@@ -318,7 +325,11 @@ subroutine tdma_dist_solve(psi)
          red_rbuf(row,cc,src) = dpk
       enddo
    enddo
+   call nvtxEndRange
+   call nvtxStartRange("TDMA alltoall 2")
    call mpi_alltoall(red_rptr, 2*nchunk, MPI_DOUBLE_COMPLEX, red_sptr, 2*nchunk, MPI_DOUBLE_COMPLEX, zcomm, ierr)
+   call nvtxEndRange
+   call nvtxStartRange("TDMA reconstruction")
    ! (3) local reconstruction: x(k) = z(k) - x(1)*p(k) - x(nzy)*q(k), q(nzy-1) = c'(nzy-1), q(k) = -c'(k)*q(k+1)
    !$acc parallel loop collapse(2) gang vector private(x1, xm, qk, col, dest, cc)
    do i = 1, nkxy
@@ -338,6 +349,7 @@ subroutine tdma_dist_solve(psi)
          enddo
       enddo
    enddo
+   call nvtxEndRange
 end subroutine tdma_dist_solve
 
 end module tdma
