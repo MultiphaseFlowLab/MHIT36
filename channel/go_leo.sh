@@ -21,3 +21,5 @@ export LD_LIBRARY_PATH=$ROOT_DIR:$LD_LIBRARY_PATH
 
 chmod 777 binder_leo.sh
 mpirun -np 4 --map-by node:PE=8 --rank-by core  ./binder_leo.sh ./mhit36
+# many nodes with poisson_dist=1: HCOLL/UCC collectives off (TDMA MPI_Alltoall much faster and more stable)
+#mpirun -np 4 --map-by node:PE=8 --rank-by core -x OMPI_MCA_coll_hcoll_enable=0 -x OMPI_MCA_coll_ucc_enable=0 ./binder_leo.sh ./mhit36
