@@ -1,8 +1,8 @@
 # Channel configuratuion
 
 Code for turbulent channel flow simulations (closed channel).
-Solution of Navier-Stokes equations + phase-field method (ACDI) + energy equation (passive scalar).
-For time integration, a fully explicit scheme is used: RK4 for ACDI + RK3 for Navier-Stokes and temperature
+Solution of Navier-Stokes equations + modified conservative level-set method (Wang, Gao, Parsani, J. Sci. Comput. 2025) + energy equation (passive scalar).
+For time integration, a fully explicit scheme is used: SSP-RK3 for the level-set (advection + reinitialization) + RK3 for Navier-Stokes and temperature
 
 ## Main features at a glance:
 - No-slip boundary conditions at the two walls ($z=\pm h$); BCs interpolated at the walls (standard approach for staggered)

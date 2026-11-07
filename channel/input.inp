@@ -16,6 +16,9 @@
 0.0         ! Pressure gradient along y (negative if flow along y) 
 0.5         ! Initial drop radius for phase-field
 0.1d0       ! Surface tension
-0.51         ! Ratio eps/dx
+0.51         ! Ratio eps/dx (diffusion in reinitialization, eps must be >= max(dx,dy,dz)/2)
+0.51         ! Ratio epsadv/max(umax*dx,vmax*dy,wmax*dz) (diffusion in advection, must be >= 0.5)
+1            ! Max number of reinitialization iterations per time step
+0.0          ! Reinitialization tolerance (mean |dphi|/dtau, 0 = always do all iterations)
 0.00666666  ! kappa (thermal diffusivity)
 0.0         ! alphag for buoyancy

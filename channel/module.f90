@@ -13,22 +13,17 @@ module param
     double precision :: dt,mu,rho !flow parameters
     integer :: inflow, inphi, intheta
     double precision :: radius, sigma, epsr, eps, pos, val, epsi, enum ! phase-field parameters
+    double precision :: epsadvr, epsadv, dtau, tolreinit ! level-set parameters (advection diffusion, pseudo time step, reinit tolerance)
+    double precision :: dzmax, lapmax ! max wall-normal node spacing and max diagonal coefficient of the discrete laplacian (boundedness checks)
+    double precision :: errre, gerrre, phimin, phimax, gphimin, gphimax ! level-set monitors (reinit convergence, boundedness)
+    integer :: nreinit, itre ! max number of reinitialization iterations per time step and counter
     double precision :: times, timef, alphag
-    double precision :: gradpx, gradpy, noise, lflow, gflow, ubulk, cflx, cfly, cflz, gcflz
+    double precision :: gradpx, gradpy, noise, lflow, gflow, ubulk, cflx, cfly, cflz
     double precision :: amp, mx, my, mz ! for perturbed flow
     double precision :: kappa ! temperature parameters: thermal diffusivity, Prandtl number
-    double precision, parameter :: rk4a(5) = [ &
-    0.d0, &
-    -567301805773.d0 / 1357537059087.d0, &
-    -2404267990393.d0 / 2016746695238.d0, &
-    -3550918686646.d0 / 2091501179385.d0, &
-    -1275806237668.d0 / 842570457699.d0 ]
-double precision, parameter :: rk4b(5) = [ &
-    1432997174477.d0 / 9575080441755.d0, &
-    5161836677717.d0 / 13612068292357.d0, &
-    1720146321549.d0 / 2090206949498.d0, &
-    3134564353537.d0 / 4481467310338.d0, &
-    2277821191437.d0 / 14882151754819.d0 ]
+    ! SSP-RK3 for the level-set (Shu-Osher form): phi = rk3a*phi^n + rk3b*(phi + dt*rhs(phi))
+    double precision, parameter :: rk3a(3) = [ 0.d0, 3.d0/4.d0, 1.d0/3.d0 ]
+    double precision, parameter :: rk3b(3) = [ 1.d0, 1.d0/4.d0, 2.d0/3.d0 ]
 end module param
 
 

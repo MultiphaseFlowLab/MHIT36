@@ -35,7 +35,11 @@ read(55,*) gradpy
 ! phase-field parameters
 read(55,*) radius
 read(55,*) sigma
-read(55,*) epsr   
+read(55,*) epsr
+! level-set parameters
+read(55,*) epsadvr
+read(55,*) nreinit
+read(55,*) tolreinit
 ! temperature parameters
 read(55,*) kappa
 read(55,*) alphag
@@ -82,6 +86,9 @@ if (rank .eq. 0) then
     write(*,*) "Radius    ", radius
     write(*,*) "Sigma     ", sigma
     write(*,*) "Eps       ", eps
+    write(*,*) "Epsadvr   ", epsadvr
+    write(*,*) "Nreinit   ", nreinit
+    write(*,*) "Tolreinit ", tolreinit
     write(*,*) "Kappa     ", kappa
     write(*,*) "Alphag    ", alphag
     write(*,*) "Lx        ", lx
@@ -133,6 +140,22 @@ do k=1, nz+1
    dzi(k) = 1.d0/(z(k)-z(k-1))
 enddo
 !write(*,*) "dzi", dzi
+! quantities for the level-set boundedness constraints (Wang et al. 2025, extended to the stretched z grid)
+! dzmax: largest spacing between interior nodes; lapmax: largest diagonal coefficient of the discrete laplacian
+dzmax = 0.d0
+do k = 2, nz
+   dzmax = max(dzmax, 1.d0/dzi(k))
+enddo
+lapmax = 0.d0
+do k = 1, nz
+   lapmax = max(lapmax, 2.d0*ddxi + 2.d0*ddyi + dzci(k)*(dzi(k)+dzi(k+1)))
+enddo
+if (rank .eq. 0) then
+   write(*,*) "Dzmax     ", dzmax
+   ! lower bound on the reinitialization diffusion: eps >= max(dx,dy,dz)/2
+   if (eps .lt. 0.5d0*max(dx,max(dy,dzmax))) write(*,*) "Warning: eps < max(dx,dy,dz)/2, phi may be unbounded (increase epsr)"
+   if (epsadvr .lt. 0.5d0) write(*,*) "Warning: epsadvr < 0.5, phi may be unbounded"
+endif
 ! wavenumber
 do i = 1, nx/2
    kx(i) = (i-1)*(twopi/lx)
