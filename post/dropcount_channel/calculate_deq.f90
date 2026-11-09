@@ -2,7 +2,7 @@ subroutine calculate_deq(s_drop,nstep)
  use param
  use flowvars
  implicit none 
- integer :: nstep
+ integer :: nstep, k
  integer :: s_drop(nx,ny,nz)
  character(len=clen) :: time,namefile
  !double precision :: sdrop_volume(nx,nx,nx)
@@ -26,11 +26,14 @@ subroutine calculate_deq(s_drop,nstep)
  !  ! Calculate volume of the single drop
  !  vol=SUM(sdrop_volume)
 
- vol=sum(dble(s_drop))
+ ! Volume of the drop: sum of the cell volumes dx*dy*dz(k) (z is stretched)
+ vol=0.0d0
+ do k=1,nz
+   vol=vol+dble(sum(s_drop(:,:,k)))*dx*dy/dzci(k)
+ enddo
 
  ! Equivalent Diameter; twice the radius of the equivalent sphere ( Vsphere=(4/3)*pi*R^3 )
- ! The volume has to be multiplied by dx^3. Therefore I can just multiply by dx outside.
- deq=(n6opi*vol*dx*dy*dz)**(1.0d0/3.0d0)
+ deq=(n6opi*vol)**(1.0d0/3.0d0)
     
  write(*,'(1x,a,E16.6)') 'Diameter',deq
  write(*,*)

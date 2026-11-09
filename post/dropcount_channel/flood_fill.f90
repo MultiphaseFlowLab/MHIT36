@@ -10,21 +10,24 @@ subroutine flood_fill(top, s_drop, id, jd, kd)
   integer :: ddx(18), ddy(18), ddz(18)
   integer :: n
 
-  ! 18-connectivity: 6 faces + 12 edges
+  ! 18-connectivity: 6 faces + 12 edges (4 xy, 4 xz, 4 yz)
   data ddx / &
-      1,-1, 0, 0, 0, 0, &      ! faces
-      1, 1,-1,-1, 1, 1,-1,-1, & ! edges (xy)
-      1,-1, 0, 0 &             ! edges (xz & yz) (filled below)
+      1,-1, 0, 0, 0, 0, &       ! faces
+      1, 1,-1,-1, &             ! edges xy
+      1, 1,-1,-1, &             ! edges xz
+      0, 0, 0, 0 &              ! edges yz
   /
   data ddy / &
-      0, 0, 1,-1, 0, 0, &      ! faces
-      1,-1, 1,-1, 0, 0, 0, 0, & ! edges (xy & xz)
-      0, 0, 1,-1 &
+      0, 0, 1,-1, 0, 0, &       ! faces
+      1,-1, 1,-1, &             ! edges xy
+      0, 0, 0, 0, &             ! edges xz
+      1, 1,-1,-1 &              ! edges yz
   /
   data ddz / &
-      0, 0, 0, 0, 1,-1, &      ! faces
-      0, 0, 0, 0, 1,-1, 1,-1, & ! edges (xz & yz)
-      1,-1, 1,-1 &
+      0, 0, 0, 0, 1,-1, &       ! faces
+      0, 0, 0, 0, &             ! edges xy
+      1,-1, 1,-1, &             ! edges xz
+      1,-1, 1,-1 &              ! edges yz
   /
 
   ! If starting voxel is not pore: nothing to do

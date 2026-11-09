@@ -4,3 +4,4 @@
 150000 ! start step
 800000 ! end step
 5000   ! dstep
+0.01   ! csi, z-stretching factor (same as channel/input.inp)

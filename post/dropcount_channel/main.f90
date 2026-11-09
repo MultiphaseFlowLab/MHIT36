@@ -14,6 +14,7 @@ ly = 3.14
 dy = ly/ny
 lz = 2.00
 dz = lz/nz
+call build_grid()
 
 call print_start()
 

@@ -8,6 +8,8 @@ module param
  integer :: begin, finish, step
  character(len=clen) :: rootpath
  double precision ::dx,lx,dy,ly,dz,lz
+ double precision :: csi ! stretching factor along z (same as the channel input.inp)
+ double precision, allocatable :: z(:), dzci(:) ! cell centres along z and inverse cell height
 end module param
 !*********************************************
 module flowvars
