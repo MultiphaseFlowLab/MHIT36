@@ -7,7 +7,7 @@
 2.0         ! Wall-normal domain height Lz=2h
 0.01        ! Stretching factor quasi~0=uniform 1.5 mid-stretching and 3.0 extreme (do not use zero)
 1           ! inflow condition (0=zero, 1=perturbed 3D field, 2=read from fields)
-0           ! phase-field initial condition (0=circular drop, 1=read from fields)
+0           ! phase-field initial condition (0=liquid layer in the centre, 1=read from fields)
 0           ! theta initial condition (0=uniform, 1=read from fields)
 0.00002     ! dt for the simulation
 0.00555     ! mu (viscosity)
@@ -18,7 +18,7 @@
 0.1d0       ! Surface tension
 0.51         ! Ratio eps/dx (diffusion in reinitialization, eps must be >= max(dx,dy,dz)/2)
 0.51         ! Ratio epsadv/max(umax*dx,vmax*dy,wmax*dz) (diffusion in advection, must be >= 0.5)
-1            ! Max number of reinitialization iterations per time step
-0.0          ! Reinitialization tolerance (mean |dphi|/dtau, 0 = always do all iterations)
+20           ! Max number of reinitialization iterations per time step
+1.0d-3       ! Reinitialization tolerance (mean |dphi|/dtau, 0 = always do all iterations)
 0.00666666  ! kappa (thermal diffusivity)
 0.0         ! alphag for buoyancy

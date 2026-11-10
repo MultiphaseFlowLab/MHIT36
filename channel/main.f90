@@ -300,13 +300,14 @@ CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, w, work_halo_d, CUDE
 if (restart .eq. 0) then
 if (rank.eq.0) write(*,*) 'Initialize phase field (fresh start)'
    if (inphi .eq. 0) then
-   if (rank.eq.0) write(*,*) 'Spherical drop'
+   if (rank.eq.0) write(*,*) 'Liquid layer in the channel centre (half thickness = radius)'
       do k = 1+halo_ext, piX%shape(3)-halo_ext
       kg = piX%lo(3) + k - 1 - halo_ext
          do j = 1+halo_ext, piX%shape(2)-halo_ext
          jg = piX%lo(2) + j - 1 - halo_ext
            do i = 1, piX%shape(1)
-               pos=(x(i)-lx/2)**2d0 +  (y(jg)-ly/2)**2d0 + (z(kg)-lz/2)**2d0
+               !pos=(x(i)-lx/2)**2d0 +  (y(jg)-ly/2)**2d0 + (z(kg)-lz/2)**2d0 ! spherical drop
+               pos=(z(kg)-lz/2)**2d0 ! liquid layer
                phi(i,j,k) = 0.5d0*(1.d0-tanh((sqrt(pos)-radius)/2/eps))
             enddo
         enddo
@@ -429,12 +430,14 @@ do t=tstart,tfin
    ! In each RK stage the rhs is computed in a first kernel and phi is updated in a second one
    ! (updating phi in the same kernel where neighbours are read is a race condition on the GPU)
    #if phiflag == 1
-   ! Advection diffusion and pseudo time step (dtau/dt = max velocity, as in the paper)
+   ! Advection diffusion (as in the paper)
    epsadv = epsadvr*max(gumax*dx, max(gvmax*dy, gwmax*dzmax))
-   dtau   = max(gumax, max(gvmax, gwmax))*dt
+   ! Pseudo time step: largest value allowed by the reinitialization boundedness constraint (eq. 32: eps*dtau*lapmax <= 1),
+   ! with a 0.9 safety factor. The paper uses dtau = umax*dt, but the steady state of the reinitialization does not depend
+   ! on dtau, and at low CFL umax*dt is much smaller than needed (slow convergence of the reinitialization)
+   dtau   = 0.9d0/(eps*lapmax)
    if (rank.eq.0) then
       if (epsadv*dt*lapmax .gt. 1.d0) write(*,*) "Warning: epsadv*dt*lapmax > 1, phi may be unbounded (reduce dt)"
-      if (eps*dtau*lapmax .gt. 1.d0)  write(*,*) "Warning: eps*dtau*lapmax > 1, phi may be unbounded (reduce dt)"
    endif
 
    !########################################################
