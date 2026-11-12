@@ -17,6 +17,8 @@ module param
     double precision :: dzmax, lapmax ! max wall-normal node spacing and max diagonal coefficient of the discrete laplacian (boundedness checks)
     double precision :: errre, gerrre, phimin, phimax, gphimin, gphimax ! level-set monitors (reinit convergence, boundedness)
     integer :: nreinit, itre ! max number of reinitialization iterations per time step and counter
+    integer :: reinittype ! reinitialization flux: 0 = original CLS (Olsson-Kreiss), 1 = Chiodi & Desjardins (JCP 2017)
+    double precision :: dtaur ! pseudo time step: 0 = largest stable value, >0 = dtaur*umax*dt (capped by the stable value)
     double precision :: times, timef, alphag
     double precision :: gradpx, gradpy, noise, lflow, gflow, ubulk, cflx, cfly, cflz
     double precision :: amp, mx, my, mz ! for perturbed flow
@@ -73,6 +75,8 @@ module phase
    double precision, allocatable :: normx(:,:,:), normy(:,:,:), normz(:,:,:)
    double precision :: curv
    double precision :: fxp, fxm, fyp, fym, fzp, fzm
+   ! Chiodi-Desjardins reinitialization: face values of psi and normal, normal derivative of phi
+   double precision :: psif, nfx, nfy, nfz, dpsn
    double precision, allocatable :: fxst(:,:,:), fyst(:,:,:), fzst(:,:,:)
 end module phase
 

@@ -18,7 +18,9 @@
 0.33d0      ! Surface tension
 0.51         ! Ratio eps/dx (diffusion in reinitialization, eps must be >= max(dx,dy,dz)/2)
 0.51         ! Ratio epsadv/max(umax*dx,vmax*dy,wmax*dz) (diffusion in advection, must be >= 0.5)
-5            ! Max number of reinitialization iterations per time step
+1            ! Max number of reinitialization iterations per time step
 0.0          ! Reinitialization tolerance (mean |dphi|/dtau, 0 = always do all iterations)
+1            ! Reinitialization flux (0 = original CLS, Olsson-Kreiss; 1 = Chiodi & Desjardins, JCP 2017)
+1.0          ! Pseudo time step (0 = largest stable value; >0: dtau = value*umax*dt, capped by the stable value)
 0.00666666  ! kappa (thermal diffusivity)
 0.0         ! alphag for buoyancy

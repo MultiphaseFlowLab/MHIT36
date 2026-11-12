@@ -196,6 +196,7 @@ allocate(rhsu_o(piX%shape(1),piX%shape(2),piX%shape(3)),rhsv_o(piX%shape(1),piX%
 #if phiflag == 1
 allocate(phi(piX%shape(1),piX%shape(2),piX%shape(3)),rhsphi(piX%shape(1),piX%shape(2),piX%shape(3)),q_phi(piX%shape(1),piX%shape(2),piX%shape(3)))
 allocate(normx(piX%shape(1),piX%shape(2),piX%shape(3)),normy(piX%shape(1),piX%shape(2),piX%shape(3)),normz(piX%shape(1),piX%shape(2),piX%shape(3)))
+allocate(psidi(piX%shape(1),piX%shape(2),piX%shape(3))) ! psi = eps*ln(phi/(1-phi)), Chiodi-Desjardins reinitialization
 allocate(fxst(piX%shape(1),piX%shape(2),piX%shape(3)),fyst(piX%shape(1),piX%shape(2),piX%shape(3)),fzst(piX%shape(1),piX%shape(2),piX%shape(3))) ! surface tension forces
 #endif
 !Temperature variables
@@ -421,6 +422,11 @@ do t=tstart,tfin
    ! 4.1 Advection-diffusion step: dphi/dt   + div(u*phi) = epsadv*lap(phi)         -> phi^{n+1*}
    ! 4.2 Reinitialization step:    dphi/dtau = div(eps*grad(phi) - phi(1-phi)n)     -> phi^{n+1}  (n frozen, from phi^{n+1*})
    ! 4.3 Normals from phi^{n+1} (used for curvature in the surface tension) + boundedness monitor
+   ! reinittype = 1: reinitialization of Chiodi & Desjardins (JCP 343, 2017), with psi = eps*ln(phi/(1-phi)):
+   !    dphi/dtau = div( [ eps (grad(phi).n) - 1/4 (1 - tanh^2(psi/(2eps))) ] n ),   n = grad(psi)/|grad(psi)|
+   !    Normals from psi (well defined away from the interface), diffusion only along n, and the compressive
+   !    flux phi(1-phi) written in terms of psi (same steady state: phi = 1/(1+exp(-d/eps))).
+   !    Normals are frozen during the reinitialization, psi is recomputed from phi at every RK stage.
    ! Both steps use SSP-RK3 (Shu-Osher form): phi = rk3a*phi^n + rk3b*(phi + dt*rhs(phi))
    ! Boundedness 0<=phi<=1 is guaranteed if (paper constraints extended to the stretched z grid):
    !   epsadv >= max(umax*dx, vmax*dy, wmax*dz)/2,  epsadv*dt*lapmax <= 1
@@ -436,6 +442,8 @@ do t=tstart,tfin
    ! with a 0.9 safety factor. The paper uses dtau = umax*dt, but the steady state of the reinitialization does not depend
    ! on dtau, and at low CFL umax*dt is much smaller than needed (slow convergence of the reinitialization)
    dtau   = 0.9d0/(eps*lapmax)
+   ! Optional: paper choice dtau = dtaur*umax*dt (dtaur=1 as in the paper), still capped by the stable value
+   if (dtaur .gt. 0.d0) dtau = min(dtau, dtaur*max(gumax, max(gvmax, gwmax))*dt)
    if (rank.eq.0) then
       if (epsadv*dt*lapmax .gt. 1.d0) write(*,*) "Warning: epsadv*dt*lapmax > 1, phi may be unbounded (reduce dt)"
    endif
@@ -525,10 +533,11 @@ do t=tstart,tfin
    CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
    !$acc end host_data
 
-   ! Apply Neumann (zero-gradient) BC for phi at physical wall ghost cells.
+   ! Apply Neumann (zero-gradient) BC for phi at physical wall ghost cells (all j, halos included: the
+   ! Chiodi-Desjardins tangential differences read the corner cells)
    !$acc parallel loop collapse(3)
    do k=1, piX%shape(3)
-      do j=1+halo_ext, piX%shape(2)-halo_ext
+      do j=1, piX%shape(2)
          do i=1,nx
             kg = piX%lo(3) + k - 1 - halo_ext
             if (kg .eq. 0)    phi(i,j,k) = phi(i,j,k+1)
@@ -537,7 +546,10 @@ do t=tstart,tfin
       enddo
    enddo
 
-   ! normal on interior nodes
+   ! Chiodi-Desjardins: psi from phi (normals are computed from psi)
+   if (reinittype .eq. 1) call compute_psi()
+
+   ! normal on interior nodes (from psi for reinittype=1, from phi otherwise)
    !$acc parallel loop collapse(3) default(present)
    do k=1+halo_ext, piX%shape(3)-halo_ext
       do j=1+halo_ext, piX%shape(2)-halo_ext
@@ -551,9 +563,15 @@ do t=tstart,tfin
             if (ip .gt. nx) ip=1
             if (im .lt. 1)  im=nx
             kg=piX%lo(3) + k - 1 - halo_ext
-            normx(i,j,k) = 0.5d0*(phi(ip,j,k) - phi(im,j,k))*dxi
-            normy(i,j,k) = 0.5d0*(phi(i,jp,k) - phi(i,jm,k))*dyi
-            normz(i,j,k) =       (phi(i,j,kp) - phi(i,j,km))/(z(kg+1)-z(kg-1))
+            if (reinittype .eq. 1) then
+               normx(i,j,k) = 0.5d0*(psidi(ip,j,k) - psidi(im,j,k))*dxi
+               normy(i,j,k) = 0.5d0*(psidi(i,jp,k) - psidi(i,jm,k))*dyi
+               normz(i,j,k) =       (psidi(i,j,kp) - psidi(i,j,km))/(z(kg+1)-z(kg-1))
+            else
+               normx(i,j,k) = 0.5d0*(phi(ip,j,k) - phi(im,j,k))*dxi
+               normy(i,j,k) = 0.5d0*(phi(i,jp,k) - phi(i,jm,k))*dyi
+               normz(i,j,k) =       (phi(i,j,kp) - phi(i,j,km))/(z(kg+1)-z(kg-1))
+            endif
             normag = 1.d0/(sqrt(normx(i,j,k)**2 + normy(i,j,k)**2 + normz(i,j,k)**2) + enum)
             normx(i,j,k) = normx(i,j,k)*normag
             normy(i,j,k) = normy(i,j,k)*normag
@@ -609,10 +627,11 @@ do t=tstart,tfin
          CHECK_CUDECOMP_EXIT(cudecompUpdateHalosX(handle, grid_desc, phi, work_halo_d, CUDECOMP_DOUBLE, piX%halo_extents, halo_periods, 3))
          !$acc end host_data
 
-         ! Apply Neumann (zero-gradient) BC for phi at physical wall ghost cells.
+         ! Apply Neumann (zero-gradient) BC for phi at physical wall ghost cells (all j, halos included: the
+         ! Chiodi-Desjardins tangential differences read the corner cells)
          !$acc parallel loop collapse(3)
          do k=1, piX%shape(3)
-            do j=1+halo_ext, piX%shape(2)-halo_ext
+            do j=1, piX%shape(2)
                do i=1,nx
                   kg = piX%lo(3) + k - 1 - halo_ext
                   if (kg .eq. 0)    phi(i,j,k) = phi(i,j,k+1)
@@ -621,6 +640,92 @@ do t=tstart,tfin
             enddo
          enddo
 
+         if (reinittype .eq. 1) then
+         ! Chiodi & Desjardins (JCP 2017): F = [eps (grad(phi).n) - 1/4 (1-tanh^2(psi/2eps))] n at the faces,
+         ! psi recomputed from the current phi, n frozen (from psi). Face values of psi and n are averages of the two cells;
+         ! grad(phi).n uses the compact difference across the face plus averaged central differences along the face.
+         call compute_psi()
+         !$acc parallel loop collapse(3) default(present)
+         do k=1+halo_ext, piX%shape(3)-halo_ext
+            do j=1+halo_ext, piX%shape(2)-halo_ext
+               do i=1,nx
+                  im=i-1
+                  ip=i+1
+                  jm=j-1
+                  jp=j+1
+                  km=k-1
+                  kp=k+1
+                  if (ip .gt. nx) ip=1
+                  if (im .lt. 1)  im=nx
+                  kg=piX%lo(3) + k - 1 - halo_ext
+                  ! x+ face (i+1/2)
+                  psif = 0.5d0*(psidi(ip,j,k) + psidi(i,j,k))
+                  nfx  = 0.5d0*(normx(ip,j,k) + normx(i,j,k))
+                  nfy  = 0.5d0*(normy(ip,j,k) + normy(i,j,k))
+                  nfz  = 0.5d0*(normz(ip,j,k) + normz(i,j,k))
+                  dpsn = nfx*(phi(ip,j,k) - phi(i,j,k))*dxi &
+                       + nfy*0.25d0*(phi(i,jp,k) - phi(i,jm,k) + phi(ip,jp,k) - phi(ip,jm,k))*dyi &
+                       + nfz*0.5d0*(phi(i,j,kp) - phi(i,j,km) + phi(ip,j,kp) - phi(ip,j,km))/(z(kg+1)-z(kg-1))
+                  fxp  = (eps*dpsn - 0.25d0*(1.d0 - tanh(0.5d0*psif*epsi)**2))*nfx
+                  ! x- face (i-1/2)
+                  psif = 0.5d0*(psidi(im,j,k) + psidi(i,j,k))
+                  nfx  = 0.5d0*(normx(im,j,k) + normx(i,j,k))
+                  nfy  = 0.5d0*(normy(im,j,k) + normy(i,j,k))
+                  nfz  = 0.5d0*(normz(im,j,k) + normz(i,j,k))
+                  dpsn = nfx*(phi(i,j,k) - phi(im,j,k))*dxi &
+                       + nfy*0.25d0*(phi(i,jp,k) - phi(i,jm,k) + phi(im,jp,k) - phi(im,jm,k))*dyi &
+                       + nfz*0.5d0*(phi(i,j,kp) - phi(i,j,km) + phi(im,j,kp) - phi(im,j,km))/(z(kg+1)-z(kg-1))
+                  fxm  = (eps*dpsn - 0.25d0*(1.d0 - tanh(0.5d0*psif*epsi)**2))*nfx
+                  ! y+ face (j+1/2)
+                  psif = 0.5d0*(psidi(i,jp,k) + psidi(i,j,k))
+                  nfx  = 0.5d0*(normx(i,jp,k) + normx(i,j,k))
+                  nfy  = 0.5d0*(normy(i,jp,k) + normy(i,j,k))
+                  nfz  = 0.5d0*(normz(i,jp,k) + normz(i,j,k))
+                  dpsn = nfy*(phi(i,jp,k) - phi(i,j,k))*dyi &
+                       + nfx*0.25d0*(phi(ip,j,k) - phi(im,j,k) + phi(ip,jp,k) - phi(im,jp,k))*dxi &
+                       + nfz*0.5d0*(phi(i,j,kp) - phi(i,j,km) + phi(i,jp,kp) - phi(i,jp,km))/(z(kg+1)-z(kg-1))
+                  fyp  = (eps*dpsn - 0.25d0*(1.d0 - tanh(0.5d0*psif*epsi)**2))*nfy
+                  ! y- face (j-1/2)
+                  psif = 0.5d0*(psidi(i,jm,k) + psidi(i,j,k))
+                  nfx  = 0.5d0*(normx(i,jm,k) + normx(i,j,k))
+                  nfy  = 0.5d0*(normy(i,jm,k) + normy(i,j,k))
+                  nfz  = 0.5d0*(normz(i,jm,k) + normz(i,j,k))
+                  dpsn = nfy*(phi(i,j,k) - phi(i,jm,k))*dyi &
+                       + nfx*0.25d0*(phi(ip,j,k) - phi(im,j,k) + phi(ip,jm,k) - phi(im,jm,k))*dxi &
+                       + nfz*0.5d0*(phi(i,j,kp) - phi(i,j,km) + phi(i,jm,kp) - phi(i,jm,km))/(z(kg+1)-z(kg-1))
+                  fym  = (eps*dpsn - 0.25d0*(1.d0 - tanh(0.5d0*psif*epsi)**2))*nfy
+                  ! z+ face (k+1/2), zero flux through the top wall
+                  if (kg .eq. nz) then
+                     fzp = 0.d0
+                  else
+                     psif = 0.5d0*(psidi(i,j,kp) + psidi(i,j,k))
+                     nfx  = 0.5d0*(normx(i,j,kp) + normx(i,j,k))
+                     nfy  = 0.5d0*(normy(i,j,kp) + normy(i,j,k))
+                     nfz  = 0.5d0*(normz(i,j,kp) + normz(i,j,k))
+                     dpsn = nfz*(phi(i,j,kp) - phi(i,j,k))*dzi(kg+1) &
+                          + nfx*0.25d0*(phi(ip,j,k) - phi(im,j,k) + phi(ip,j,kp) - phi(im,j,kp))*dxi &
+                          + nfy*0.25d0*(phi(i,jp,k) - phi(i,jm,k) + phi(i,jp,kp) - phi(i,jm,kp))*dyi
+                     fzp  = (eps*dpsn - 0.25d0*(1.d0 - tanh(0.5d0*psif*epsi)**2))*nfz
+                  endif
+                  ! z- face (k-1/2), zero flux through the bottom wall
+                  if (kg .eq. 1) then
+                     fzm = 0.d0
+                  else
+                     psif = 0.5d0*(psidi(i,j,km) + psidi(i,j,k))
+                     nfx  = 0.5d0*(normx(i,j,km) + normx(i,j,k))
+                     nfy  = 0.5d0*(normy(i,j,km) + normy(i,j,k))
+                     nfz  = 0.5d0*(normz(i,j,km) + normz(i,j,k))
+                     dpsn = nfz*(phi(i,j,k) - phi(i,j,km))*dzi(kg) &
+                          + nfx*0.25d0*(phi(ip,j,k) - phi(im,j,k) + phi(ip,j,km) - phi(im,j,km))*dxi &
+                          + nfy*0.25d0*(phi(i,jp,k) - phi(i,jm,k) + phi(i,jp,km) - phi(i,jm,km))*dyi
+                     fzm  = (eps*dpsn - 0.25d0*(1.d0 - tanh(0.5d0*psif*epsi)**2))*nfz
+                  endif
+                  rhsphi(i,j,k) = (fxp - fxm)*dxi + (fyp - fym)*dyi + (fzp - fzm)*dzci(kg)
+               enddo
+            enddo
+         enddo
+         else
+         ! Original CLS (Olsson-Kreiss form)
          !$acc parallel loop collapse(3) default(present)
          do k=1+halo_ext, piX%shape(3)-halo_ext
             do j=1+halo_ext, piX%shape(2)-halo_ext
@@ -653,6 +758,7 @@ do t=tstart,tfin
                enddo
             enddo
          enddo
+         endif  ! reinittype
 
          ! RK3 update (separate kernel)
          !$acc parallel loop collapse(3) default(present)
@@ -1243,5 +1349,41 @@ deallocate(theta,rhstheta,rhstheta_o)
 #endif
 
 call mpi_finalize(ierr)
+
+contains
+
+!##########################################################################
+! psi = eps*ln(phi/(1-phi)) for the Chiodi-Desjardins reinitialization.
+! phi must have valid halos and wall ghost cells. psi is computed on the whole
+! pencil (halos included, no extra halo exchange); the wall ghost cells are then
+! overwritten for all j (Neumann), so the corner cells read by the tangential
+! derivatives are always defined.
+!##########################################################################
+subroutine compute_psi()
+implicit none
+integer :: ii, jj, kk, kkg
+double precision :: pc
+
+!$acc parallel loop collapse(3) default(present) private(pc)
+do kk=1, piX%shape(3)
+   do jj=1, piX%shape(2)
+      do ii=1,nx
+         pc = min(max(phi(ii,jj,kk), 1.d-12), 1.d0-1.d-12)
+         psidi(ii,jj,kk) = eps*log(pc/(1.d0-pc))
+      enddo
+   enddo
+enddo
+
+!$acc parallel loop collapse(3) default(present)
+do kk=1, piX%shape(3)
+   do jj=1, piX%shape(2)
+      do ii=1,nx
+         kkg = piX%lo(3) + kk - 1 - halo_ext
+         if (kkg .eq. 0)    psidi(ii,jj,kk) = psidi(ii,jj,kk+1)
+         if (kkg .eq. nz+1) psidi(ii,jj,kk) = psidi(ii,jj,kk-1)
+      enddo
+   enddo
+enddo
+end subroutine compute_psi
 
 end program main

@@ -40,6 +40,8 @@ read(55,*) epsr
 read(55,*) epsadvr
 read(55,*) nreinit
 read(55,*) tolreinit
+read(55,*) reinittype
+read(55,*) dtaur
 ! temperature parameters
 read(55,*) kappa
 read(55,*) alphag
@@ -89,6 +91,8 @@ if (rank .eq. 0) then
     write(*,*) "Epsadvr   ", epsadvr
     write(*,*) "Nreinit   ", nreinit
     write(*,*) "Tolreinit ", tolreinit
+    write(*,*) "Reinittype", reinittype
+    write(*,*) "Dtaur     ", dtaur
     write(*,*) "Kappa     ", kappa
     write(*,*) "Alphag    ", alphag
     write(*,*) "Lx        ", lx
