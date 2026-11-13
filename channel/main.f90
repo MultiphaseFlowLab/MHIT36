@@ -431,8 +431,11 @@ do t=tstart,tfin
    ! Boundedness 0<=phi<=1 is guaranteed if (paper constraints extended to the stretched z grid):
    !   epsadv >= max(umax*dx, vmax*dy, wmax*dz)/2,  epsadv*dt*lapmax <= 1
    !   eps    >= max(dx, dy, dz)/2,                 eps*dtau*lapmax   <= 1
-   ! Walls: Neumann for phi (zero diffusive flux) and mirrored normals in the ghost cells (normz changes sign),
+   ! Walls (phiwall=0): Neumann for phi (zero diffusive flux) and mirrored normals in the ghost cells (normz changes sign),
    ! so the compressive flux through the wall is zero (mass conserved, 90 degrees contact angle); w=0 at the wall.
+   ! Walls (phiwall=1): Dirichlet phi=0 (ghost = -phi_1). Advection: only the diffusive flux crosses the wall (w=0).
+   ! Chiodi-Desjardins reinit: wall-face flux = eps*dphi/dz (compressive term 1/4(1-tanh^2) = phi(1-phi) = 0 at the wall).
+   ! Any phi reaching the wall is removed (not conserved): use only if no drop is expected to touch the walls.
    ! In each RK stage the rhs is computed in a first kernel and phi is updated in a second one
    ! (updating phi in the same kernel where neighbours are read is a race condition on the GPU)
    #if phiflag == 1
@@ -473,8 +476,8 @@ do t=tstart,tfin
          do j=1+halo_ext, piX%shape(2)-halo_ext
             do i=1,nx
                kg = piX%lo(3) + k - 1 - halo_ext
-               if (kg .eq. 0)    phi(i,j,k) = phi(i,j,k+1)
-               if (kg .eq. nz+1) phi(i,j,k) = phi(i,j,k-1)
+               if (kg .eq. 0)    phi(i,j,k) = phiwsgn*phi(i,j,k+1)   ! phiwsgn=+1 Neumann, -1 Dirichlet phi=0
+               if (kg .eq. nz+1) phi(i,j,k) = phiwsgn*phi(i,j,k-1)
             enddo
          enddo
       enddo
@@ -540,8 +543,8 @@ do t=tstart,tfin
       do j=1, piX%shape(2)
          do i=1,nx
             kg = piX%lo(3) + k - 1 - halo_ext
-            if (kg .eq. 0)    phi(i,j,k) = phi(i,j,k+1)
-            if (kg .eq. nz+1) phi(i,j,k) = phi(i,j,k-1)
+            if (kg .eq. 0)    phi(i,j,k) = phiwsgn*phi(i,j,k+1)
+            if (kg .eq. nz+1) phi(i,j,k) = phiwsgn*phi(i,j,k-1)
          enddo
       enddo
    enddo
@@ -634,8 +637,8 @@ do t=tstart,tfin
             do j=1, piX%shape(2)
                do i=1,nx
                   kg = piX%lo(3) + k - 1 - halo_ext
-                  if (kg .eq. 0)    phi(i,j,k) = phi(i,j,k+1)
-                  if (kg .eq. nz+1) phi(i,j,k) = phi(i,j,k-1)
+                  if (kg .eq. 0)    phi(i,j,k) = phiwsgn*phi(i,j,k+1)
+                  if (kg .eq. nz+1) phi(i,j,k) = phiwsgn*phi(i,j,k-1)
                enddo
             enddo
          enddo
@@ -694,9 +697,10 @@ do t=tstart,tfin
                        + nfx*0.25d0*(phi(ip,j,k) - phi(im,j,k) + phi(ip,jm,k) - phi(im,jm,k))*dxi &
                        + nfz*0.5d0*(phi(i,j,kp) - phi(i,j,km) + phi(i,jm,kp) - phi(i,jm,km))/(z(kg+1)-z(kg-1))
                   fym  = (eps*dpsn - 0.25d0*(1.d0 - tanh(0.5d0*psif*epsi)**2))*nfy
-                  ! z+ face (k+1/2), zero flux through the top wall
+                  ! z+ face (k+1/2), zero flux through the top wall (phiwall=0) or diffusive flux only (phiwall=1)
                   if (kg .eq. nz) then
                      fzp = 0.d0
+                     if (phiwall .eq. 1) fzp = eps*(phi(i,j,kp) - phi(i,j,k))*dzi(kg+1)   ! Dirichlet phi=0
                   else
                      psif = 0.5d0*(psidi(i,j,kp) + psidi(i,j,k))
                      nfx  = 0.5d0*(normx(i,j,kp) + normx(i,j,k))
@@ -707,9 +711,10 @@ do t=tstart,tfin
                           + nfy*0.25d0*(phi(i,jp,k) - phi(i,jm,k) + phi(i,jp,kp) - phi(i,jm,kp))*dyi
                      fzp  = (eps*dpsn - 0.25d0*(1.d0 - tanh(0.5d0*psif*epsi)**2))*nfz
                   endif
-                  ! z- face (k-1/2), zero flux through the bottom wall
+                  ! z- face (k-1/2), zero flux through the bottom wall (phiwall=0) or diffusive flux only (phiwall=1)
                   if (kg .eq. 1) then
                      fzm = 0.d0
+                     if (phiwall .eq. 1) fzm = eps*(phi(i,j,k) - phi(i,j,km))*dzi(kg)     ! Dirichlet phi=0
                   else
                      psif = 0.5d0*(psidi(i,j,km) + psidi(i,j,k))
                      nfx  = 0.5d0*(normx(i,j,km) + normx(i,j,k))
@@ -803,8 +808,8 @@ do t=tstart,tfin
       do j=1+halo_ext, piX%shape(2)-halo_ext
          do i=1,nx
             kg = piX%lo(3) + k - 1 - halo_ext
-            if (kg .eq. 0)    phi(i,j,k) = phi(i,j,k+1)
-            if (kg .eq. nz+1) phi(i,j,k) = phi(i,j,k-1)
+            if (kg .eq. 0)    phi(i,j,k) = phiwsgn*phi(i,j,k+1)
+            if (kg .eq. nz+1) phi(i,j,k) = phiwsgn*phi(i,j,k-1)
          enddo
       enddo
    enddo
@@ -1374,6 +1379,9 @@ do kk=1, piX%shape(3)
    enddo
 enddo
 
+! Neumann walls: copy psi into the ghost cells. Dirichlet walls (phiwall=1): keep psi from the ghost phi
+! (phi_ghost=-phi_1 is clipped, psi_ghost = eps*ln(1e-12)), so the normal in the wall cell points away from the wall
+if (phiwall .eq. 1) return
 !$acc parallel loop collapse(3) default(present)
 do kk=1, piX%shape(3)
    do jj=1, piX%shape(2)

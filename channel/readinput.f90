@@ -42,6 +42,7 @@ read(55,*) nreinit
 read(55,*) tolreinit
 read(55,*) reinittype
 read(55,*) dtaur
+read(55,*) phiwall
 ! temperature parameters
 read(55,*) kappa
 read(55,*) alphag
@@ -62,6 +63,8 @@ rhoi=1.d0/rho
 eps=epsr*dx
 epsi=1.d0/eps
 enum=1.e-16
+phiwsgn=1.d0
+if (phiwall .eq. 1) phiwsgn=-1.d0
 !write(*,*) "Check on stability", dt*mu*dzi*dzi
 
 if (rank .eq. 0) then
@@ -93,6 +96,7 @@ if (rank .eq. 0) then
     write(*,*) "Tolreinit ", tolreinit
     write(*,*) "Reinittype", reinittype
     write(*,*) "Dtaur     ", dtaur
+    write(*,*) "Phiwall   ", phiwall
     write(*,*) "Kappa     ", kappa
     write(*,*) "Alphag    ", alphag
     write(*,*) "Lx        ", lx
@@ -154,6 +158,11 @@ lapmax = 0.d0
 do k = 1, nz
    lapmax = max(lapmax, 2.d0*ddxi + 2.d0*ddyi + dzci(k)*(dzi(k)+dzi(k+1)))
 enddo
+! Dirichlet phi=0 at the walls (phiwall=1): the wall cells get an extra term (ghost = -phi_1, wall link counted twice)
+if (phiwall .eq. 1) then
+   lapmax = max(lapmax, 2.d0*ddxi + 2.d0*ddyi + dzci(1)*(2.d0*dzi(1)+dzi(2)))
+   lapmax = max(lapmax, 2.d0*ddxi + 2.d0*ddyi + dzci(nz)*(dzi(nz)+2.d0*dzi(nz+1)))
+endif
 if (rank .eq. 0) then
    write(*,*) "Dzmax     ", dzmax
    ! lower bound on the reinitialization diffusion: eps >= max(dx,dy,dz)/2

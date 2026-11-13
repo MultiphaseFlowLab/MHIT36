@@ -19,6 +19,8 @@ module param
     integer :: nreinit, itre ! max number of reinitialization iterations per time step and counter
     integer :: reinittype ! reinitialization flux: 0 = original CLS (Olsson-Kreiss), 1 = Chiodi & Desjardins (JCP 2017)
     double precision :: dtaur ! pseudo time step: 0 = largest stable value, >0 = dtaur*umax*dt (capped by the stable value)
+    integer :: phiwall ! wall BC for the level set: 0 = Neumann (90 deg contact angle, mass conserved), 1 = Dirichlet phi=0 (wall residue removed)
+    double precision :: phiwsgn ! ghost cell factor: +1 (Neumann, phi_ghost=phi_1) or -1 (Dirichlet, phi_ghost=-phi_1, phi=0 at the wall)
     double precision :: times, timef, alphag
     double precision :: gradpx, gradpy, noise, lflow, gflow, ubulk, cflx, cfly, cflz
     double precision :: amp, mx, my, mz ! for perturbed flow

@@ -22,5 +22,6 @@
 0.0          ! Reinitialization tolerance (mean |dphi|/dtau, 0 = always do all iterations)
 1            ! Reinitialization flux (0 = original CLS, Olsson-Kreiss; 1 = Chiodi & Desjardins, JCP 2017)
 1.0          ! Pseudo time step (0 = largest stable value; >0: dtau = value*umax*dt, capped by the stable value)
+0            ! Level-set wall BC (0 = Neumann, 90 deg contact angle; 1 = Dirichlet phi=0, no residue at the walls)
 0.00666666  ! kappa (thermal diffusivity)
 0.0         ! alphag for buoyancy
